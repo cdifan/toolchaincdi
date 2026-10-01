@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 # see: https://github.com/marketplace/actions/build-and-push-docker-images
 jobs:
