@@ -578,7 +578,10 @@ return, which follows Ultra C 2.5 and is checked against `test/os9c/testos9c-ucc
 3. **callee register saves**, including FPU registers with `-m68881`
 4. **return values:** struct return (all aggregates in memory, buffer address in a0), float and
    double in d0 / d0:d1 also with `-m68881`, `long double` and `_Complex` in memory
-5. **tail calls** disabled from os9call functions
+5. **tail calls** disabled from os9call functions (as implemented, done together with phase 3: once
+   the epilogue restores d1, a0 and a1, a tail call would restore d1 after loading the outgoing
+   arguments; tail calls from stack-convention functions to os9call ones are refused too, since
+   argument and return registers differ)
 
 A predefined macro, `__OS9CALL__`, tells headers whether `-mos9call` is in effect (see "Headers
 for Microware libraries").
@@ -1371,6 +1374,11 @@ test/
      `-m68000 --pcrel` for hand-written assembly; making the binutils build default to the 68000
      remains an option
    - research: the Microware C 3.2 `.dbg` format for SrcDbg (§6)
+   - libgcc's soft-float routines (`lb1sf68.S`, assembled as PIC because of `-mpcrel`) read their
+     rounding mode `_fpCCR` through the GOT, and in a static link with the README's linker script
+     the GOT reference resolves to the wrong word (found by the Level 2 harness; independent of
+     `-mos9call`). Check how `elf2mod` handles GOT references, and whether libgcc's `.S` files
+     should be built without PIC
 
 ## 13. References
 

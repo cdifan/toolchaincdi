@@ -31,6 +31,20 @@
 static unsigned char mem[MEM_SIZE];
 static int done, exit_status, trace;
 
+/* Data is linked from -0x8000.  Absolute references to it (libgcc's
+   soft-float code reads its rounding mode through the GOT) come out as
+   0xFF8000 and up in the 24-bit address space; map them onto the data
+   area, like a6-relative accesses.  */
+
+static unsigned
+map (unsigned address)
+{
+  address &= MEM_SIZE - 1;
+  if (address >= 0xFF8000)
+    address = address - 0xFF8000 + DATA_BASE;
+  return address;
+}
+
 static unsigned
 get16 (const unsigned char *p)
 {
@@ -81,7 +95,7 @@ check_io (unsigned address, int write, unsigned value)
 unsigned int
 m68k_read_memory_8 (unsigned int address)
 {
-  address &= MEM_SIZE - 1;
+  address = map (address);
   if (check_io (address, 0, 0))
     return 0;
   return mem[address];
@@ -90,7 +104,7 @@ m68k_read_memory_8 (unsigned int address)
 unsigned int
 m68k_read_memory_16 (unsigned int address)
 {
-  address &= MEM_SIZE - 1;
+  address = map (address);
   if (check_io (address, 0, 0))
     return 0x4E71;			/* nop */
   if (address & 1)
@@ -101,7 +115,7 @@ m68k_read_memory_16 (unsigned int address)
 unsigned int
 m68k_read_memory_32 (unsigned int address)
 {
-  address &= MEM_SIZE - 1;
+  address = map (address);
   if (check_io (address, 0, 0))
     return 0;
   if (address & 1)
@@ -130,7 +144,7 @@ m68k_read_disassembler_32 (unsigned int address)
 void
 m68k_write_memory_8 (unsigned int address, unsigned int value)
 {
-  address &= MEM_SIZE - 1;
+  address = map (address);
   if (check_io (address, 1, value))
     return;
   mem[address] = value;
@@ -139,7 +153,7 @@ m68k_write_memory_8 (unsigned int address, unsigned int value)
 void
 m68k_write_memory_16 (unsigned int address, unsigned int value)
 {
-  address &= MEM_SIZE - 1;
+  address = map (address);
   if (check_io (address, 1, value))
     return;
   if (address & 1)
@@ -151,7 +165,7 @@ m68k_write_memory_16 (unsigned int address, unsigned int value)
 void
 m68k_write_memory_32 (unsigned int address, unsigned int value)
 {
-  address &= MEM_SIZE - 1;
+  address = map (address);
   if (check_io (address, 1, value))
     return;
   if (address & 1)
@@ -268,7 +282,10 @@ main (int argc, char **argv)
 	  char buf[100];
 	  unsigned pc = m68k_get_reg (NULL, M68K_REG_PC);
 	  m68k_disassemble (buf, pc, M68K_CPU_TYPE_68000);
-	  fprintf (stderr, "%06X  %s\n", pc, buf);
+	  fprintf (stderr, "%06X  %-30s", pc, buf);
+	  for (i = M68K_REG_D0; i <= M68K_REG_A7; i++)
+	    fprintf (stderr, " %08X", m68k_get_reg (NULL, (m68k_register_t) i));
+	  fprintf (stderr, "\n");
 	  steps += m68k_execute (1);
 	}
       else
