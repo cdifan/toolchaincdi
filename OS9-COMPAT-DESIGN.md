@@ -674,7 +674,7 @@ call them. A prototype macro, `_OS9PROTO`, keeps such a header usable by Microwa
 #endif
 #endif
 #ifndef _OS9PROTO
-#error "this GCC doesn't support the os9call attribute"
+#define _OS9PROTO(p) p __os9call_attribute_not_supported_by_this_GCC
 #endif
 #else
 #ifdef __STDC__
@@ -692,11 +692,16 @@ int _errmsg _OS9PROTO((int nerr, char *msg, ...));
   not `-mos9call` is in effect. With the flag the attribute is redundant, but harmless.
 - **Microware C 3.2** gets K&R declarations (`()`). The macro uses only `#ifdef`, `#ifndef`,
   `#else` and `#endif` outside the GCC branch, since that compiler predates `__has_attribute` and
-  may lack `#elif`; whether its preprocessor skips the GCC branch cleanly is to be confirmed.
+  may lack `#elif`. Checked with the probe
+  [`test/os9c/os9proto.c`](test/os9c/os9proto.c) (output `os9proto-cc32.a`): its preprocessor
+  skips the GCC branch, including `#if defined(__has_attribute)` and `#if __has_attribute(…)`,
+  but rejects an `#error` there ("illegal '#'"), even though the line is skipped. So the GCC
+  branch has no `#error`, and the calls come out as K&R calls, as from GCC.
 - **Other ANSI compilers** get plain prototypes. For Ultra C 2.5 in ANSI mode that is wrong for
   variadic functions, since it puts unnamed arguments on the stack.
 - **A GCC without `os9call` support** stops with an error rather than silently using the stack
-  convention.
+  convention: a deliberate syntax error at each declaration, "expected declaration specifiers
+  before '__os9call_attribute_not_supported_by_this_GCC'".
 - **Detection:** `__has_attribute(os9call)` (available since GCC 5) checks whether the attribute
   is supported, independently of the flag. `__OS9CALL__` tells whether `-mos9call` itself is on.
 - **Variadic functions** such as `create` and `_errmsg` are called with the same positional,

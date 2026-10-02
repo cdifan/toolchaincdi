@@ -1,0 +1,32 @@
+ psect os9proto_c,0,0,0,0,0
+ nam os9proto_c
+ ttl probe
+probe:  link a5,#0
+ movem.l #_1!1,-(sp)
+ pea 4096.w
+ pea 27.w
+ moveq.l #3,d1 :2
+ lea _4(pc),a0
+ move.l a0,d0 :2
+ bsr create
+ addq.l #8,sp :2
+ move.l d0,d2 :2
+ pea 2.w
+ lea _5(pc),a0
+ move.l a0,d1 :2
+ moveq.l #1,d0 :2
+ bsr _errmsg
+ addq.l #4,sp :2
+ add.l d0,d2 :2
+ move.l d2,d0 :2
+ bra _3
+ nop :2
+_3
+ movem.l -12(a5),#_1
+ unlk a5
+ rts :2
+_1 equ 0x00000106 :0
+_2 equ 0x00000018 :0
+_4 dc.b "file",$0
+_5 dc.b "msg %d",$0
+ ends
