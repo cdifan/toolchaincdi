@@ -1004,7 +1004,7 @@ example dump. It's an ordinary OS-9 data module:
 | module header | standard 48-byte OS-9 module header (type: data module) |
 | name | NUL-terminated module name (`<program>.stb`) |
 | STB header | 2-byte STB format number (0x0100), 4-byte CRC of the program module, 4-byte offset to the symbol entries, 4-byte number of entries, padding to the next 16-byte offset |
-| symbol entries | sorted by ascending value; each is a 4-byte value, a 2-byte type flag (low 3 bits: 0 uninitialised data, 1 initialised data, 2 remote data, 4 program text, 6 absolute) and a 4-byte name offset |
+| symbol entries | sorted by ascending value; each is a 4-byte value, a 2-byte type flag (low 3 bits: 0 uninitialised data, 1 initialised data, 2 remote data, 4 program text, 6 absolute; l68 also uses 3 for initialised remote data, as in ROF definitions) and a 4-byte name offset |
 | names | NUL-terminated symbol names |
 | module CRC | as for any OS-9 module |
 
