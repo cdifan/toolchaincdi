@@ -48,7 +48,7 @@ $(BUILD)/%.elf: $(HERE)tests/%.c $(HERE)tests/%.S $(HERE)crt0.S $(HERE)support.S
 	$(TPREFIX)as -m68000 --pcrel -o $(BUILD)/$*-stubs.o $(HERE)tests/$*.S
 	$(TPREFIX)as -m68000 --pcrel -o $(BUILD)/crt0.o $(HERE)crt0.S
 	$(TPREFIX)as -m68000 --pcrel -o $(BUILD)/support.o $(HERE)support.S
-	$(TPREFIX)ld -T $(HERE)abi.lds -o $@ $(BUILD)/crt0.o $(BUILD)/$*.o \
+	$(TPREFIX)ld --no-check-sections -T $(HERE)abi.lds -o $@ $(BUILD)/crt0.o $(BUILD)/$*.o \
 	  $(BUILD)/$*-stubs.o $(BUILD)/support.o $(LIBGCC)
 
 LIBGCC = $(shell $(GCC) -print-libgcc-file-name)
@@ -90,7 +90,7 @@ $(BUILD)/mw/cstart.o $(BUILD)/mw/clib.a: $(BUILD)/rof2elf
 $(BUILD)/mw/%.elf: $(HERE)mwtests/%.c $(HERE)crt0.S $(HERE)abi.lds $(BUILD)/mw/cstart.o $(BUILD)/mw/clib.a
 	$(GCC) -c $(or $(file <$(HERE)mwtests/$*.flags),$(CFLAGS_MW)) -o $(BUILD)/mw/$*.o $<
 	$(TPREFIX)as -m68000 --pcrel -o $(BUILD)/mw/crt0.o $(HERE)crt0.S
-	$(TPREFIX)ld -T $(HERE)abi.lds -o $@ $(BUILD)/mw/crt0.o $(BUILD)/mw/$*.o \
+	$(TPREFIX)ld --no-check-sections -T $(HERE)abi.lds -o $@ $(BUILD)/mw/crt0.o $(BUILD)/mw/$*.o \
 	  $(BUILD)/mw/cstart.o $(BUILD)/mw/clib.a $(LIBGCC)
 
 check-mw: $(BUILD)/abirun $(MWTESTS:%=$(BUILD)/mw/%.elf)

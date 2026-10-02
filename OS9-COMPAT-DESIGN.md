@@ -796,7 +796,7 @@ An ROF has eight sections:
 |---|---|---|
 | code | `.text` | one code section per ROF; `.rodata`/`.text.*` get merged into it on the way back |
 | initialized / uninitialized data | `.data` / `.bss` | |
-| remote data (`vsect remote`) | `.data.remote` / `.bss.remote`, beyond the 64K a6 window | see "Large programs" |
+| remote data (`vsect remote`) | `.remote.data` / `.remote.bss`, beyond the 64K a6 window | see "Large programs" |
 | 2-byte data references (a6-relative) | `R_68K_16` | must agree with the -0x8000 bias in the linker script |
 | 4-byte references | `R_68K_32` | in `.data`: pointers, which `elf2mod` relocates at load time. In code: link-time constants, i.e. a6-relative data offsets (`move.l #_iob,a1` then `adda.l a6,a1` in `cstart.r`) or equates, which come out right with the -0x8000 data bias; `elf2mod` accepts these |
 | relative 1/2/4 bytes | `R_68K_PC8`/`PC16`/`PC32` | |
@@ -947,14 +947,32 @@ Variables that don't fit in the 64 KB a6 window are marked *remote*, like Microw
 storage class (*OS-9 C Language User Manual*, chapter 2; Microware C 3.2 also has `-k0l`, 32-bit
 offsets for all data):
 
-- An attribute (`remote`) places them in `.data.remote` / `.bss.remote` sections, which the linker
-  script puts after the normal data, beyond the window.
+- An attribute (`remote`) places them in `.remote.data` / `.remote.bss` sections, which the linker
+  script puts after the normal data, beyond the window. (Not `.data.remote` / `.bss.remote`:
+  linker scripts' `.data.*` and `.bss.*` patterns would capture those.)
 - GCC accesses them with a 32-bit offset in an index register, e.g. `move.l #sym,dN` followed by
   `0(a6,dN.l)`; small data keeps the fast 16-bit form. (The GCC 1.37.1 OS-9 port's `-mremote`
   did the same.)
 - `elf2mod` accepts these 32-bit references from code to data as link-time constants (a6-relative
-  offsets), not as pointers needing load-time relocation; today it rejects them.
+  offsets), not as pointers needing load-time relocation.
 - `rof2elf` maps Microware's remote vsects onto the same sections.
+
+**As implemented.**
+- **GCC:** the attribute marks the symbol (`TARGET_ENCODE_SECTION_INFO`, which also names the
+  section, since GCC puts uninitialized variables in `.bss` without asking
+  `TARGET_ASM_SELECT_SECTION`). An address of a remote variable is not a legitimate constant or
+  address; the address hooks and the `movsi` expander turn it into a6 plus `move.l #sym`. The
+  attribute needs `-ma6rel`, and `TARGET_SECTION_TYPE_FLAGS` makes `.remote.bss` `@nobits`.
+- **The full 64 KB window:** with data from -0x8000, more than 32 KB of data crosses from
+  0xFFFFFFFF to 0. GNU `ld` only accepts that with `--no-check-sections`; the README's "32K only"
+  comment in `os9.lds` comes from this. With the option, the window holds up to 64 KB, as with
+  Microware C 3.2, and remote data follows directly.
+- **Layout:** the data area then extends past 0, so `.text` goes above it (e.g. at `0x400000`);
+  `elf2mod` now accepts any `.text` address. The module's initialized data is a single block, so
+  `.bss` goes before `.data` (`elf2mod` takes the data area's start from whichever comes first):
+  then `.data` and `.remote.data` are adjacent, and no zeros are stored for `.bss`.
+- **Tests:** Level 1 checks sections and code; Level 2 runs 40 KB of normal data plus a
+  70,000-byte remote array at every optimization level.
 
 ### Debug symbols for Microware's debuggers
 
@@ -1390,9 +1408,9 @@ test/
 4. **`rof2elf`:** done, in `cdifan/elf2mod` (`rof2elf.md` there). It converts the CD-i libraries
    and `cstart.r`; 4-byte references to data and equates are link-time constants, which `elf2mod`
    now accepts in code; the mainline header becomes `__os9_*` symbols; the linker script must
-   define `end`. Still open: remote data in `elf2mod` and the linker script, and using the
-   `__os9_*` symbols in `elf2mod`'s module header. Level 3 runs partly (§11); Microware C 3.2's
-   variadic functions were confirmed by running them (§4).
+   define `end`. `elf2mod` handles remote data and takes the module header from the `__os9_*`
+   symbols. Level 3 runs partly (§11); Microware C 3.2's variadic functions were confirmed by
+   running them (§4).
 5. **`elf2rof`**, then the deferred items:
    - porting the fork to GCC 17 (§2)
    - enabling C++ in the toolchain build (`--enable-languages=c,c++`); the C++ parts of
@@ -1403,8 +1421,7 @@ test/
    - caller-side use of preserved a0/a1
    - the emulator serial bridge
    - `.stb` symbol modules from `elf2mod` (§6)
-   - large programs (§6): the `_jmptbl` jump table in `elf2mod`, and the `remote` attribute in
-     GCC plus its handling in `elf2mod` and the linker script
+   - large programs (§6): the `_jmptbl` jump table in `elf2mod` (the `remote` attribute is done)
    - the assembler's default CPU (§6, "Branches within a function"): the README now documents
      `-m68000 --pcrel` for hand-written assembly; making the binutils build default to the 68000
      remains an option

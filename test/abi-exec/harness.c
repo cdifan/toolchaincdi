@@ -226,7 +226,9 @@ load_elf (const char *file)
       if (get32 (ph) != 1)		/* PT_LOAD */
 	continue;
       /* Data linked at -0x8000 and up goes to DATA_BASE.  */
-      addr = vaddr >= 0x80000000UL ? DATA_BASE + (vaddr + 0x8000UL) : vaddr;
+      /* Code (executable segments) goes at its address; data, linked from
+	 -0x8000, goes to DATA_BASE.  */
+      addr = (get32 (ph + 24) & 1) ? vaddr : DATA_BASE + (vaddr + 0x8000UL);
       addr &= 0xFFFFFFFFUL;
       if (addr + memsz > STACK_TOP - 0x10000 || filesz > memsz)
 	{
