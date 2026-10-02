@@ -353,8 +353,8 @@ rules apply to *all* arguments, named or not, and the default argument promotion
   it's a declaration for functions implemented elsewhere, which is exactly the Microware case.
   In C, the unprototyped `f()` gives the same calls.
 
-This matches every Microware C 3.2 caller, and should match Microware C 3.2's variadic library
-functions (to be confirmed, see the research item below). It deliberately differs from
+This matches every Microware C 3.2 caller, and Microware C 3.2's variadic library functions too
+(confirmed by running them, see below). It deliberately differs from
 Ultra C 2.5: calling a variadic function compiled with it from `-mos9call` code would put the
 first unnamed arguments in the wrong place.
 
@@ -783,12 +783,12 @@ An ROF has eight sections:
 | initialized / uninitialized data | `.data` / `.bss` | |
 | remote data (`vsect remote`) | `.data.remote` / `.bss.remote`, beyond the 64K a6 window | see "Large programs" |
 | 2-byte data references (a6-relative) | `R_68K_16` | must agree with the -0x8000 bias in the linker script |
-| 4-byte references | `R_68K_32` (to be confirmed) | open: ROF's 4-byte code and data references are offsets relative to the module or the data area, not absolute addresses. How they map onto `elf2mod`'s relocation model (which already handles `R_68K_32` in `.data`) has to be worked out |
+| 4-byte references | `R_68K_32` | in `.data`: pointers, which `elf2mod` relocates at load time. In code: link-time constants, i.e. a6-relative data offsets (`move.l #_iob,a1` then `adda.l a6,a1` in `cstart.r`) or equates, which come out right with the -0x8000 data bias; `elf2mod` accepts these |
 | relative 1/2/4 bytes | `R_68K_PC8`/`PC16`/`PC32` | |
-| negative references | — | no m68k ELF equivalent: reject, or turn into a symbol difference |
+| negative references | `R_68K_PC32` when paired | an external reference paired with a negated reference to the same ROF's code is a PC-relative value (`cstart.r`'s `jsr (pc,dN.l)` calls); other negative references are rejected, unless only equates are involved, which `rof2elf` folds in (with `-e sys.l`) |
 | common symbols | ELF COMMON | |
 | addend in the instruction bytes | RELA addend | |
-| mainline header (type, attributes, edition, stack, entry) | must reach `elf2mod` | e.g. as options or special symbols; matters when using Microware's `cstart.r` |
+| mainline header (type, attributes, edition, stack, entry) | absolute and code symbols `__os9_tylan`, `__os9_attrev`, `__os9_edition`, `__os9_stack`, `__os9_entry`, `__os9_trapent` | `elf2mod` doesn't use them yet (§12) |
 | debug info | dropped | Microware's format differs from DWARF |
 
 Other things to handle:
@@ -1365,12 +1365,13 @@ test/
 
 ## 12. Open questions and next steps
 
-1. **Build environment:** set up WSL2 + Ubuntu (§8) and build the current fork unmodified, as the
-   Level 0 baseline (§11).
-2. **Test harness:** Level 0 baseline and script, then the Level 1 DejaGnu tests (§11), before
-   any compiler change. Level 2 follows before implementation phase 3.
-3. **`-mos9call`:** implement per §4, on GCC 11.1 (§2), phase by phase, each phase gated by the
-   test levels (§11). Optionally cross-check against a disassembly of `clib.l`.
+1. **Build environment:** done: WSL2 + Ubuntu (§8), with the unmodified fork as the Level 0
+   reference compiler (§11).
+2. **Test harness:** done: Level 0 (`test/baseline`), Level 1 (DejaGnu tests in the GCC tree,
+   board in `test/dejagnu`), Level 2 (`test/abi-exec`) and a partial Level 3 (§11).
+3. **`-mos9call`:** done on GCC 11.1, phase by phase (branch `11.1.0-os9-compat` of
+   `cdifan/gcc`), plus the fixes from an implementation review and `-mbuiltin=stackcall|os9call`
+   (§4). Still possible: a cross-check against a disassembly of `clib.l`.
 4. **`rof2elf`:** done, in `cdifan/elf2mod` (`rof2elf.md` there). It converts the CD-i libraries
    and `cstart.r`; 4-byte references to data and equates are link-time constants, which `elf2mod`
    now accepts in code; the mainline header becomes `__os9_*` symbols; the linker script must
