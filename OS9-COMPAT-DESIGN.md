@@ -1416,7 +1416,9 @@ bridge (§9) for automation.
   module from them as from the originals, byte for byte.
 - **GCC code linked by `l68`:** `make check-l68 L68=…` in `test/abi-exec` converts the Level 2
   tests and libgcc with `elf2rof`, links them with `l68` (with `-a` for the far-call test) and runs
-  them as modules.
+  them as modules. With `MWLIB=…`, the Level 3 tests too, linked with Microware's original
+  `clib.l`; `cstart.r` goes through `rof2elf` and back without its `__os9_*` symbols, so it
+  isn't a second root psect (the harness's `crt0` is the entry, as with `check-mw`).
 
 ### Mapping to implementation phases
 

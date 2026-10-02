@@ -6,8 +6,9 @@
 #                        -m68020 -m68881 on an emulated 68040
 #   make check-mw MWLIB=DIR  also link with Microware's C library (see below)
 #   make check-mod       run the tests as OS-9 modules made by elf2mod (see below)
-#   make check-l68 L68=...  run them as modules linked by Microware's l68,
-#                        through elf2rof (see below)
+#   make check-l68 L68=... [MWLIB=...]  run them as modules linked by
+#                        Microware's l68, through elf2rof; with MWLIB also
+#                        the Level 3 tests, with Microware's clib.l (see below)
 #   make GCC=...         compiler driver to test
 #   make BUILD=...       build directory (default ~/build/abi-exec)
 
@@ -90,11 +91,18 @@ $(BUILD)/mw/cstart.o $(BUILD)/mw/clib.a: $(BUILD)/rof2elf
 	$(BUILD)/rof2elf -e $(call mwfile,sys.l) -o $(BUILD)/mw/clib.a $(call mwfile,clib.l)
 	$(TPREFIX)ranlib $(BUILD)/mw/clib.a
 
-$(BUILD)/mw/%.elf: $(HERE)mwtests/%.c $(HERE)crt0.S $(HERE)abi.lds $(BUILD)/mw/cstart.o $(BUILD)/mw/clib.a
+# The harness's crt0 is the entry point (abirun has no OS-9 system
+# calls for cstart's startup), so cstart only provides its variables and
+# functions: without its module header symbols (__os9_*), which crt0
+# defines.
+$(BUILD)/mw/cstart-sub.o: $(BUILD)/mw/cstart.o
+	$(TPREFIX)objcopy -w --strip-symbol='__os9_*' $< $@
+
+$(BUILD)/mw/%.elf: $(HERE)mwtests/%.c $(HERE)crt0.S $(HERE)abi.lds $(BUILD)/mw/cstart-sub.o $(BUILD)/mw/clib.a
 	$(GCC) -c $(or $(file <$(HERE)mwtests/$*.flags),$(CFLAGS_MW)) -o $(BUILD)/mw/$*.o $<
 	$(TPREFIX)as -m68000 --pcrel -o $(BUILD)/mw/crt0.o $(HERE)crt0.S
 	$(TPREFIX)ld --no-check-sections -T $(HERE)abi.lds -o $@ $(BUILD)/mw/crt0.o $(BUILD)/mw/$*.o \
-	  $(BUILD)/mw/cstart.o $(BUILD)/mw/clib.a $(LIBGCC)
+	  $(BUILD)/mw/cstart-sub.o $(BUILD)/mw/clib.a $(LIBGCC)
 
 check-mw: $(BUILD)/abirun $(MWTESTS:%=$(BUILD)/mw/%.elf)
 	@fail=0; for t in $(MWTESTS); do \
@@ -156,7 +164,7 @@ check-mod:
 # its soft-float members use GOT relocations, which elf2rof (like elf2mod)
 # can't handle.  l68 is proprietary and not included; Ultra C's Windows
 # l68.exe runs from WSL:
-#   make check-l68 L68=/mnt/c/path/to/DOS/BIN/l68.exe
+#   make check-l68 L68=/mnt/c/path/to/DOS/BIN/l68.exe [MWLIB=/path/to/LIB]
 L68 ?=
 
 $(BUILD)/elf2rof: $(HERE)../../src/elf2mod/elf2rof.c
@@ -177,6 +185,21 @@ $(BUILD)/far/%.lmod: $(BUILD)/far/%.mod $(BUILD)/elf2rof $(BUILD)/libgcc.l
 	@[ -n "$(L68)" ] || { echo "check-l68: set L68 to Microware's l68"; exit 2; }
 	$(call l68link,$(BUILD)/far,crt0 $* $*-stubs support,../,-a,$*)
 
+# With MWLIB as well: the Level 3 tests (mwtests/) linked by l68 with
+# Microware's own clib.l (the original, not converted) and cstart as a
+# subroutine psect (rof2elf, without __os9_*, back through elf2rof).
+$(BUILD)/mw/%.lmod: $(BUILD)/mw/%.elf $(BUILD)/elf2rof $(BUILD)/libgcc.l
+	@[ -n "$(L68)" ] || { echo "check-l68: set L68 to Microware's l68"; exit 2; }
+	cp $(call mwfile,clib.l) $(BUILD)/mw/clib.l
+	cp $(call mwfile,sys.l) $(BUILD)/mw/sys.l
+	cd $(BUILD)/mw && for f in crt0 $* cstart-sub; do ../elf2rof -o $$f.r $$f.o || exit 1; done && \
+	  $(L68) -n=$* -o=$*.lmod crt0.r $*.r cstart-sub.r -l=clib.l -l=../libgcc.l -l=sys.l > $*.l68.log
+
+run-mw-l68: $(BUILD)/abirun $(MWTESTS:%=$(BUILD)/mw/%.lmod)
+	@fail=0; for t in $(MWTESTS); do \
+	  if $(BUILD)/abirun -m $(BUILD)/mw/$$t.lmod; then echo "PASS: mw/$$t.lmod"; \
+	  else echo "FAIL: mw/$$t.lmod"; fail=1; fi; done; exit $$fail
+
 run-l68: $(BUILD)/abirun $(TESTS:%=$(BUILD)/%.lmod) $(MODTESTS:%=$(BUILD)/far/%.lmod)
 	@fail=0; for t in $(TESTS:%=$(BUILD)/%.lmod) $(MODTESTS:%=$(BUILD)/far/%.lmod); do \
 	  if $(BUILD)/abirun $(ABIRUN_FLAGS) -m $$t; then echo "PASS: $$(basename $$t)"; \
@@ -187,6 +210,8 @@ check-l68:
 	  $(MAKE) --no-print-directory BUILD=$(BUILD)/l68-$$o \
 	    FARFLAGS=-fno-optimize-sibling-calls \
 	    CFLAGS_T="$$(echo -$$o | sed 's/bsrw/ -mbsrw/') -mpcrel -ma6rel -mos9call" run-l68 || exit 1; done
+	@[ -z "$(MWLIB)" ] || { echo "== l68, Microware's clib.l"; \
+	  $(MAKE) --no-print-directory BUILD=$(BUILD)/l68-mw run-mw-l68; }
 
 clean:
 	rm -rf $(BUILD)
