@@ -101,7 +101,8 @@ check-mw: $(BUILD)/abirun $(MWTESTS:%=$(BUILD)/mw/%.elf)
 
 # Modules: the tests linked with -q, converted by elf2mod (from
 # src/elf2mod, with the BFD library under BFDPATH) and run as OS-9 modules
-# (abirun -m); plus modtests/, whose far calls go through elf2mod's
+# (abirun -m, which checks the header parity and CRC like OS-9; the .stb
+# symbol modules from elf2mod -g are checked with abirun -v); plus modtests/, whose far calls go through elf2mod's
 # _jmptbl (linked with --noinhibit-exec, which keeps the output despite
 # the truncated relocations).
 #   make check-mod
@@ -118,7 +119,7 @@ $(BUILD)/elf2mod: $(HERE)../../src/elf2mod/elf2mod.c
 $(BUILD)/%.mod: $(BUILD)/%.elf $(BUILD)/elf2mod
 	$(TPREFIX)ld -q --no-check-sections -T $(HERE)abi.lds -o $(BUILD)/$*.qelf \
 	  $(BUILD)/crt0.o $(BUILD)/$*.o $(BUILD)/$*-stubs.o $(BUILD)/support.o $(LIBGCC)
-	$(BUILD)/elf2mod $(BUILD)/$*.qelf $@ > /dev/null
+	$(BUILD)/elf2mod -g $(BUILD)/$*.qelf $@ > /dev/null
 
 $(BUILD)/far/%.mod: $(HERE)modtests/%.c $(HERE)modtests/%.S $(HERE)crt0.S $(HERE)support.S $(HERE)abi.lds $(BUILD)/elf2mod
 	mkdir -p $(BUILD)/far
@@ -134,7 +135,8 @@ $(BUILD)/far/%.mod: $(HERE)modtests/%.c $(HERE)modtests/%.S $(HERE)crt0.S $(HERE
 
 run-mod: $(BUILD)/abirun $(TESTS:%=$(BUILD)/%.mod) $(MODTESTS:%=$(BUILD)/far/%.mod)
 	@fail=0; for t in $(TESTS:%=$(BUILD)/%.mod) $(MODTESTS:%=$(BUILD)/far/%.mod); do \
-	  if $(BUILD)/abirun $(ABIRUN_FLAGS) -m $$t; then echo "PASS: $$(basename $$t)"; \
+	  if $(BUILD)/abirun $(ABIRUN_FLAGS) -m $$t && \
+	     { [ ! -f $$t.stb ] || $(BUILD)/abirun -v $$t.stb; }; then echo "PASS: $$(basename $$t)"; \
 	  else echo "FAIL: $$(basename $$t)"; fail=1; fi; done; exit $$fail
 
 check-mod:

@@ -6,3 +6,4 @@ Makefile text eol=lf
 *.S text eol=lf
 *.lds text eol=lf
 *.flags text eol=lf
+*.bat text eol=crlf

@@ -18,10 +18,11 @@
    initialized data references relocated, as OS-9 does, and a6 points at
    DATA_BASE + 0x8000.
 
-   Usage: abirun [-t] [-c 68040] [-m] file
+   Usage: abirun [-t] [-c 68040] [-m | -v] file
      -t  trace every instruction
      -c  emulate a 68040 (with FPU, for -m68881 code) instead of a 68000
-     -m  the file is an OS-9 module  */
+     -m  the file is an OS-9 module (its header and CRC are checked)
+     -v  only check the header and CRC of the OS-9 module (e.g. a .stb)  */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -299,6 +300,49 @@ relocate_irefs (const unsigned char *p, unsigned long base)
     }
 }
 
+/* Check the OS-9 module M of SIZE bytes as OS-9 does when loading it:
+   the sync bytes, the header parity (the first 24 words XOR to 0xFFFF)
+   and the CRC (over the whole module, including the stored CRC, it
+   leaves 0x800FE3).  */
+
+static void
+verify_module (const char *file, const unsigned char *m, long size)
+{
+  unsigned long msize, crc = 0xFFFFFF;
+  unsigned parity = 0;
+  long i;
+  int j;
+
+  if (size < 0x30 || get16 (m) != 0x4AFC
+      || (msize = get32 (m + 4)) > (unsigned long) size || msize < 0x30)
+    {
+      fprintf (stderr, "abirun: %s isn't an OS-9 module\n", file);
+      exit (2);
+    }
+  for (i = 0; i < 0x30; i += 2)
+    parity ^= get16 (m + i);
+  if (parity != 0xFFFF)
+    {
+      fprintf (stderr, "abirun: %s: bad header parity\n", file);
+      exit (2);
+    }
+  for (i = 0; i < (long) msize; i++)
+    {
+      crc ^= (unsigned long) m[i] << 16;
+      for (j = 0; j < 8; j++)
+	{
+	  crc <<= 1;
+	  if (crc & 0x1000000)
+	    crc ^= 0x800063;
+	}
+    }
+  if ((crc & 0xFFFFFF) != 0x800FE3)
+    {
+      fprintf (stderr, "abirun: %s: bad module CRC\n", file);
+      exit (2);
+    }
+}
+
 /* Load the OS-9 module FILE as OS-9 would; return its entry point.  */
 
 static unsigned long
@@ -309,9 +353,10 @@ load_module (const char *file)
   unsigned long msize, exec, dsize, idata, irefs, off, len;
   const unsigned char *p;
 
-  if (size < 0x48 || get16 (m) != 0x4AFC)
+  verify_module (file, m, size);
+  if (size < 0x48)
     {
-      fprintf (stderr, "abirun: %s isn't an OS-9 module\n", file);
+      fprintf (stderr, "abirun: %s isn't a program module\n", file);
       exit (2);
     }
   msize = get32 (m + 4);
@@ -364,6 +409,8 @@ main (int argc, char **argv)
 	trace = 1;
       else if (argc > 1 && strcmp (argv[1], "-m") == 0)
 	module = 1;
+      else if (argc > 1 && strcmp (argv[1], "-v") == 0)
+	module = 2;
       else if (argc > 2 && strcmp (argv[1], "-c") == 0
 	       && strcmp (argv[2], "68040") == 0)
 	{
@@ -376,10 +423,19 @@ main (int argc, char **argv)
     }
   if (argc != 2)
     {
-      fprintf (stderr, "usage: abirun [-t] [-c 68040] [-m] file\n");
+      fprintf (stderr, "usage: abirun [-t] [-c 68040] [-m | -v] file\n");
       return 2;
     }
 
+  if (module == 2)
+    {
+      /* -v: only verify the module (e.g. a symbol module).  */
+      long size;
+      unsigned char *m = read_file (argv[1], &size);
+      verify_module (argv[1], m, size);
+      free (m);
+      return 0;
+    }
   entry = module ? load_module (argv[1]) : load_elf (argv[1]);
   put32 (0, STACK_TOP);
   put32 (4, entry);

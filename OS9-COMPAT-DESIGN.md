@@ -994,7 +994,7 @@ They're placed in an `STB` directory next to the program if one exists:
 
 SrcDbg can be told to skip either file, so the two can be supported independently.
 
-#### `.stb` symbol module: documented, planned for `elf2mod`
+#### `.stb` symbol module: implemented in `elf2mod`
 
 The format is specified in Appendix A of the *OS-9/68000 User-State Debugger* manual, with an
 example dump. It's an ordinary OS-9 data module:
@@ -1016,6 +1016,25 @@ The program-module CRC lets the debugger check that the symbols match the progra
 
 **Plan:** generate the `.stb` in `elf2mod`, from the linked ELF's symbol table. `elf2mod` builds
 the program module and its CRC anyway. An option would select whether to write it.
+
+**As implemented** (`elf2mod -g`, `elf2mod.md` in `cdifan/elf2mod`): compared with Ultra C's `l68
+-g` and Microware C 3.2's `l68 -g` (`test/l68cmp`), more details:
+- the type flag 0x2000 marks the symbols the linker defines: `btext`, `bname`, `etext`
+  (code, 0x2004), `end` and `_jmptbl` (data, 0x2001); `elf2mod` adds them with l68's values
+- the two linkers differ, so `elf2mod` has two styles: C 3.2's l68 (the default) also flags the
+  symbols other psects refer to, and lists equal values in reverse definition order; Ultra C's
+  l68 also defines `_btext`, `_bname`, `_etext`, `_bdata`/`bdata` and `_enddata`, lists equal
+  values in definition order, and puts the symbol module's header parity at offset 0x28 rather
+  than 0x2E (`--stb=ucc`)
+- the module header's symbol field (offset 0x1C) points to the STB header
+- the module owner comes from the `GRPUSER` environment variable (1.0 if unset), with both
+  linkers; `elf2mod` reads it too, and has `--owner`
+
+`test/l68cmp/run.sh` links the same ROFs with l68 and with `rof2elf`, GNU ld (in l68's order) and
+`elf2mod`: the symbol modules list the same symbols, and the program modules are identical except
+for the order of the data relocation table, and so the CRCs. Microware's tools are only used
+locally (`MWOS`, `MWLIB`, or `MWBUILT` for a build made under vDos with `vdos.bat`). This also
+found that Ultra C's assembler writes ROF edition 9.1, with 32-bit counts; `rof2elf` reads it now.
 
 #### `.dbg` source-level information: undocumented, research item
 
@@ -1369,6 +1388,11 @@ bridge (§9) for automation.
   `index` and `atol`; Microware's `qsort` calls back a GCC comparator; and GCC's own `memcpy`
   for a struct copy goes to `clib`'s (with `-mbuiltin=os9call`). Functions that make system calls
   (memory, I/O, floating point through the math trap) need the real OS-9 in CD-i Emulator.
+- **Linking compared with `l68`:** `test/l68cmp/run.sh` links a test program with Microware's
+  linker (Ultra C's `l68`, or Microware C 3.2's under vDos via `vdos.bat`) and the same ROFs
+  with `rof2elf`, GNU ld and `elf2mod`, and compares the program and `.stb` symbol modules (§6).
+  `make check-mod` also checks every module's header parity and CRC, and its `.stb`, as OS-9
+  does (`abirun -m`, `abirun -v`).
 - **`rof2elf`/`elf2rof` round trips:** convert ROF → ELF → ROF and compare with `rdump`. Convert
   ELF → ROF and link with `l68`.
 
@@ -1392,6 +1416,7 @@ the build, and tests don't belong in the image.
 test/
 ├── os9c/          the Microware C probe and its Microware C 3.2 / Ultra C 2.5 outputs
 ├── baseline/      Level 0: the corpus list and the compile-and-diff script
+├── l68cmp/        Level 3: elf2mod and rof2elf compared with Microware's linker
 └── abi-exec/      Level 2: emulator harness, assembly stubs and tests
     ├── mwtests/   Level 3 (partial): tests linked with Microware's converted C library
     └── musashi/   68000 emulator library (submodule)
@@ -1428,7 +1453,6 @@ test/
      interfaces)
    - caller-side use of preserved a0/a1
    - the emulator serial bridge
-   - `.stb` symbol modules from `elf2mod` (§6)
    - the assembler's default CPU (§6, "Branches within a function"): the README now documents
      `-m68000 --pcrel` for hand-written assembly; making the binutils build default to the 68000
      remains an option
