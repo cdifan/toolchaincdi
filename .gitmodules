@@ -4,7 +4,7 @@
 	branch = binutils-2_35-branch
 [submodule "gcc"]
 	path = src/gcc
-	url = https://github.com/murachue/gcc.git
+	url = https://github.com/cdifan/gcc.git
 	branch = 11.1.0-os9
 [submodule "newlib-cygwin"]
 	path = src/newlib-cygwin
