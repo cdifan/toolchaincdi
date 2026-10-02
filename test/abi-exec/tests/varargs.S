@@ -24,8 +24,8 @@ call_mix_idi:
 	clr.l	-(%sp)
 	move.l	#0x3FF80000,-(%sp)
 	moveq	#7,%d1
-	lea	fmt_idi(%pc),%a0
-	move.l	%a0,%d0
+	pea	fmt_idi(%pc)		| fmt without using a0, which callers
+	move.l	(%sp)+,%d0		| keep across OS-9 convention calls
 	jsr	mix(%pc)
 	lea	12(%sp),%sp
 	rts
@@ -37,8 +37,8 @@ call_mix_di:
 	clr.l	-(%sp)
 	move.l	#0x3FF80000,-(%sp)
 	move.l	#0xBADBAD,%d1		| garbage: d1 holds no argument
-	lea	fmt_di(%pc),%a0
-	move.l	%a0,%d0
+	pea	fmt_di(%pc)
+	move.l	(%sp)+,%d0
 	jsr	mix(%pc)
 	lea	12(%sp),%sp
 	rts

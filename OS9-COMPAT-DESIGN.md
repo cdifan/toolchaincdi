@@ -464,9 +464,22 @@ manual and the observed output), while d0 is never preserved. So:
   does, which is harmless). This reuses the `interrupt_handler` logic in `m68k_save_reg`.
 - **FPU registers** (with `-m68881`): an os9call callee saves every FPU register it uses,
   including fp0/fp1, which GCC normally treats as scratch. Ultra C 2.5 does the same.
-- **GCC callers** keep assuming d0/d1/a0/a1 are clobbered, which is always safe. A later
-  optimisation could let callers rely on a0/a1 surviving calls to os9call functions, via GCC's
-  per-function register-save support (`TARGET_FNTYPE_ABI` / `TARGET_INSN_CALLEE_ABI`).
+- **GCC callers** keep values in a0/a1 across calls to os9call functions (implemented with GCC's
+  per-function ABIs: `TARGET_FNTYPE_ABI` gives prototyped os9call types an ABI whose clobbered
+  set lacks a0/a1, and `TARGET_INSN_CALLEE_ABI` finds a call's type from its MEM, which refers to
+  the declaration or, for an indirect call, the pointed-to function). d1 and fp0/fp1 still count
+  as clobbered. Calls to stack convention functions (`stackcall`, libcalls) and to unprototyped
+  functions keep the default ABI: GCC's own declarations of libcall functions have the type
+  `int ()`, which `-mos9call` would otherwise make os9call (found with `-fipa-ra`, which looks
+  them up). Microware's libraries were checked first: every global entry point of Microware
+  C 3.2's `clib.l`, `cdi.l` and `math.l` that GCC code could call preserves a0/a1 (assembly
+  routines with `movem` or `exg`; the exceptions are `setjmp`/`longjmp`, across which GCC keeps
+  nothing in registers, and internal helpers); `cdisys.l` has only equates. Tests: Level 1
+  (`os9call-keep-a0a1*.c`) and Level 2 (`tests/keep.c`, with a stack convention stub that
+  clobbers a0/a1).
+  Hand-written assembly called with the OS-9 convention must now really preserve a0/a1: four
+  of the Level 2 stubs didn't (`saves.S`, `returns.S`, `varargs.S`), which `tests/saves.c` caught
+  once callers relied on it.
 - **Tail calls (sibling calls)** from os9call functions are disabled. Otherwise a non-os9call
   callee could clobber a0/a1 (or d1) after the epilogue has restored them.
 
@@ -1501,12 +1514,24 @@ test/
    running them (§4).
 5. **`elf2rof`:** done, in `cdifan/elf2mod` (`elf2rof.md` there); tested by round trips and by
    running GCC code linked with `l68` (§11). The deferred items:
+   - **usability: building a module in one step.** Today it takes `-mpcrel -ma6rel` on every
+     compile, a hand-made startup file (or `cstart.r` through `rof2elf`), a hand-made linker
+     script, `ld -q` with `--no-check-sections` or `--noinhibit-exec --defsym __jmptbl_size=N` for
+     large programs, `elf2mod`, and the system calls newlib needs, written by hand. Wanted:
+     - driver specs for `m68k-elfos9`: `-mpcrel -ma6rel` by default, and a link spec adding `-q`,
+       the right options and a linker script installed with the toolchain
+     - a small OS-9 runtime shipped with it: a startup file and newlib's system calls (`_write`,
+       `_read`, `_sbrk`, `_exit`, ...) through OS-9 system calls (`trap #0`: `I$Write`,
+       `F$SRqMem`, `F$Exit`, ...), in both multilibs, so `printf` and `malloc` work on OS-9
+     - the step from the linked ELF to the module: GCC's driver can't run a tool after linking,
+       so a thin wrapper (compile, link, `elf2mod`) or a Makefile fragment
+     - a recipe or script for converting one's own copy of Microware's libraries (`rof2elf`,
+       `ranlib`), which can't be shipped
    - porting the fork to GCC 17 (§2)
    - enabling C++ in the toolchain build (`--enable-languages=c,c++`); the C++ parts of
      implementation phase 1 (mangling) and the C++ Level 1 tests apply once it's enabled
    - building libstdc++ with `-mos9call` (newlib is done, §4 "Libraries"), with `stackcall` on
      the unwinder interfaces
-   - caller-side use of preserved a0/a1
    - the emulator serial bridge
    - the assembler's default CPU (§6, "Branches within a function"): the README now documents
      `-m68000 --pcrel` for hand-written assembly; making the binutils build default to the 68000

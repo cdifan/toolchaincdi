@@ -9,6 +9,8 @@
 | long mwcall (fn, a, b, flags): calls fn (a, b) with a in d0 and b in
 | d1, every other register holding a marker value.  flags bit 0: d1
 | doesn't carry an argument or the return value, so it must survive.
+| mwcall itself preserves a0 and a1, as an OS-9 convention function must:
+| its GCC callers keep values there.
 | Returns a mask of the registers that changed (bit 0 = d1, 1-6 =
 | d2-d7, 7-12 = a0-a5); fn's result is left in mw_result/mw_result2.
 | Called from GCC -mos9call code: fn in d0, a in d1, b at 4(sp), flags
@@ -16,11 +18,11 @@
 
 	.globl	mwcall
 mwcall:
-	movem.l	%d2-%d7/%a2-%a5,-(%sp)	| 40 bytes: b at 44(sp), flags at 48(sp)
+	movem.l	%d2-%d7/%a0-%a5,-(%sp)	| 48 bytes: b at 52(sp), flags at 56(sp)
 	move.l	%d0,mw_target(%a6)
-	move.l	48(%sp),mw_flags(%a6)
+	move.l	56(%sp),mw_flags(%a6)
 	move.l	%d1,%d0			| a
-	move.l	44(%sp),%d1		| b
+	move.l	52(%sp),%d1		| b
 	move.l	#0xD2D2D2D2,%d2
 	move.l	#0xD3D3D3D3,%d3
 	move.l	#0xD4D4D4D4,%d4
@@ -57,7 +59,7 @@ mwcall:
 4:	addq.l	#1,%d1
 	cmp.l	#13,%d1
 	bne.s	3b
-	movem.l	(%sp)+,%d2-%d7/%a2-%a5
+	movem.l	(%sp)+,%d2-%d7/%a0-%a5
 	rts
 
 mw_expect:

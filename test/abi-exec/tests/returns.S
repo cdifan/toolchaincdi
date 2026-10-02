@@ -35,7 +35,7 @@ mw_rets1:
 
 	.globl	call_g_rets		| g_rets (5) into a buffer; returns a+b+c,
 call_g_rets:				| or -1 if a0 wasn't preserved
-	move.l	%a2,-(%sp)
+	movem.l	%a0/%a2,-(%sp)		| a0 too: callers keep values there
 	lea	-12(%sp),%sp
 	move.l	%sp,%a0
 	move.l	%a0,%a2
@@ -49,7 +49,7 @@ call_g_rets:				| or -1 if a0 wasn't preserved
 	bra.s	2f
 1:	moveq	#-1,%d0
 2:	lea	12(%sp),%sp
-	move.l	(%sp)+,%a2
+	movem.l	(%sp)+,%a0/%a2
 	rts
 
 	.globl	call_g_retf		| returns g_retf ()'s d0 as is
