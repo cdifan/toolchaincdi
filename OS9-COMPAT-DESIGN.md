@@ -1574,6 +1574,36 @@ test/
      `-mos9stkchk` overflow path (it and `-mbuiltin=os9call` only run with Microware's
      libraries); the exclusion of interrupt handlers; d2-d7/a2-a5 after `longjmp`; the
      68881 `setjmp`/`longjmp` variants (there's no FPU multilib). CI runs no tests.
+   - **no FPU multilib:** the multilibs are the default and `-mos9call`, both for the 68000, so
+     `-m68020 -m68881` programs link the 68000 newlib (soft-float, and the non-68881
+     `setjmp`). A 68020/68881 multilib would follow `t-mlibs`' CPU multilibs, which `t-elfos9`
+     replaces
+
+### Known minor faults and open issues
+
+From the independent review, not fixed; none affects code built in the usual way:
+
+- **`elf2rof`, weak definitions** become ordinary ROF definitions (ROF has no weak symbols), so
+  two objects defining the same weak symbol (newlib's weak defaults, for example) would make
+  `l68` report duplicate symbols.
+- **`elf2rof`, alignment above 2** (`.balign 4` in `.rodata` or `.data`) is kept within a psect,
+  but `l68` places psects at even addresses only, so the final module doesn't guarantee it. The
+  68000 needs no more than 2.
+- **`rof2elf`, remote common definitions** (type 0x0102) become ordinary ELF common symbols,
+  placed with the near data in the 64 KB a6 window instead of with the remote data.
+- **`elf2mod`, absolute code-to-code references** (`R_68K_32` or `R_68K_16` from `.text` to
+  `.text`) are accepted and keep their link-time addresses, where `l68` would write module
+  offsets. Murachue's original behaviour; only hand-written assembly produces them (GCC's
+  read-only pointer tables are data, and Microware's libraries contain none).
+- **`elf2mod -g`, C 3.2 style:** flag 0x2000 goes on every symbol that a relocation refers to.
+  With `ld -q`, GCC objects keep relocations against their own global symbols, so more symbols
+  get it than "referred to by another psect" (`l68`) would give. It only matters when comparing
+  `.stb` files byte for byte.
+- **The Level 2 harness** doesn't check a module's type and language, or that its initialized
+  data and references lie within the module and data area; and in 68040 mode it rejects word
+  and long accesses at odd addresses, which the 68020 and later allow.
+- **The test Makefile** doesn't rebuild when binutils (`as`, `ld`) change; clean the build
+  directory after rebuilding them.
 
 ## 13. References
 

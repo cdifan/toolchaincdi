@@ -15,8 +15,9 @@
 
    With -m, the file is an OS-9 module instead (elf2mod output): it's
    loaded at MOD_BASE, its initialized data copied to DATA_BASE and its
-   initialized data references relocated, as OS-9 does, and a6 points at
-   DATA_BASE + 0x8000.
+   initialized data references relocated, as OS-9's F$Fork does (OS-9 for
+   68K Processors Technical Manual, M$IData and M$IRefs: the kernel, not
+   cstart), and a6 points at DATA_BASE + 0x8000.
 
    Usage: abirun [-t] [-c 68040] [-m | -v] file
      -t  trace every instruction
