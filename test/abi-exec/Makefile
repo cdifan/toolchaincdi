@@ -2,7 +2,8 @@
 # images.  Run inside WSL/Linux.  See OS9-COMPAT-DESIGN.md, section 11.
 #
 #   make                 build everything and run the tests (-O2)
-#   make check           run the tests at -O0, -O2, -Os and -O3
+#   make check           run the tests at -O0, -O2, -Os and -O3, and with
+#                        -m68020 -m68881 on an emulated 68040
 #   make GCC=...         compiler driver to test
 #   make BUILD=...       build directory (default ~/build/abi-exec)
 
@@ -13,6 +14,7 @@ GCC     ?= $(GB)/gcc/xgcc -B$(GB)/gcc/
 TPREFIX ?= m68k-elfos9-
 HOSTCC  ?= gcc
 CFLAGS_T = -O2 -mpcrel -ma6rel -mos9call
+ABIRUN_FLAGS =
 MUSASHI  = $(HERE)musashi
 TESTS    = $(basename $(notdir $(wildcard $(HERE)tests/*.c)))
 
@@ -52,13 +54,16 @@ LIBGCC = $(shell $(GCC) -print-libgcc-file-name)
 
 run: $(BUILD)/abirun $(TESTS:%=$(BUILD)/%.elf)
 	@fail=0; for t in $(TESTS); do \
-	  if $(BUILD)/abirun $(BUILD)/$$t.elf; then echo "PASS: $$t"; \
+	  if $(BUILD)/abirun $(ABIRUN_FLAGS) $(BUILD)/$$t.elf; then echo "PASS: $$t"; \
 	  else echo "FAIL: $$t"; fail=1; fi; done; exit $$fail
 
 check:
 	@for o in O0 O2 Os O3; do echo "== -$$o"; \
 	  $(MAKE) --no-print-directory BUILD=$(BUILD)/$$o \
 	    CFLAGS_T="-$$o -mpcrel -ma6rel -mos9call" run || exit 1; done
+	@echo "== -O2 -m68020 -m68881 (68040)"; \
+	  $(MAKE) --no-print-directory BUILD=$(BUILD)/fpu ABIRUN_FLAGS="-c 68040" \
+	    CFLAGS_T="-O2 -m68020 -m68881 -mpcrel -ma6rel -mos9call -w" run
 
 clean:
 	rm -rf $(BUILD)

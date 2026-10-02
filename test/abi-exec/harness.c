@@ -13,7 +13,9 @@
    the run with that value as the exit status.  An exception (illegal
    instruction, address error, ...) or running too long fails the run.
 
-   Usage: abirun [-t] image.elf      (-t traces every instruction)  */
+   Usage: abirun [-t] [-c 68040] image.elf
+     -t  trace every instruction
+     -c  emulate a 68040 (with FPU, for -m68881 code) instead of a 68000  */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,6 +32,7 @@
 
 static unsigned char mem[MEM_SIZE];
 static int done, exit_status, trace;
+static unsigned cpu_type = M68K_CPU_TYPE_68000;
 
 /* Data is linked from -0x8000.  Absolute references to it (libgcc's
    soft-float code reads its rounding mode through the GOT) come out as
@@ -253,14 +256,23 @@ main (int argc, char **argv)
   long steps = 0;
   int i;
 
-  if (argc > 1 && strcmp (argv[1], "-t") == 0)
+  for (;;)
     {
-      trace = 1;
+      if (argc > 1 && strcmp (argv[1], "-t") == 0)
+	trace = 1;
+      else if (argc > 2 && strcmp (argv[1], "-c") == 0
+	       && strcmp (argv[2], "68040") == 0)
+	{
+	  cpu_type = M68K_CPU_TYPE_68040;
+	  argc--, argv++;
+	}
+      else
+	break;
       argc--, argv++;
     }
   if (argc != 2)
     {
-      fprintf (stderr, "usage: abirun [-t] image.elf\n");
+      fprintf (stderr, "usage: abirun [-t] [-c 68040] image.elf\n");
       return 2;
     }
 
@@ -271,7 +283,7 @@ main (int argc, char **argv)
     put32 (i * 4, VECTOR_TRAP);
 
   m68k_init ();
-  m68k_set_cpu_type (M68K_CPU_TYPE_68000);
+  m68k_set_cpu_type (cpu_type);
   m68k_pulse_reset ();
   m68k_set_reg (M68K_REG_A6, DATA_BASE + 0x8000);
 
@@ -281,7 +293,7 @@ main (int argc, char **argv)
 	{
 	  char buf[100];
 	  unsigned pc = m68k_get_reg (NULL, M68K_REG_PC);
-	  m68k_disassemble (buf, pc, M68K_CPU_TYPE_68000);
+	  m68k_disassemble (buf, pc, cpu_type);
 	  fprintf (stderr, "%06X  %-30s", pc, buf);
 	  for (i = M68K_REG_D0; i <= M68K_REG_A7; i++)
 	    fprintf (stderr, " %08X", m68k_get_reg (NULL, (m68k_register_t) i));

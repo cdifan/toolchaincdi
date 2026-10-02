@@ -3,6 +3,7 @@
 # $GB (GCC build directory), $NB (newlib build directory).
 testos9c   | $REPO/test/os9c/testos9c.c | -w
 stkchk     | $REPO/test/os9c/stkchk.c   | -w
+irq        | $REPO/test/baseline/irq.c     |
 # newlib (flags as in its build)
 vfprintf   | $SRC/newlib-cygwin/newlib/libc/stdio/vfprintf.c  | $NL -I$SRC/newlib-cygwin/newlib/libc/stdio
 vfscanf    | $SRC/newlib-cygwin/newlib/libc/stdio/vfscanf.c   | $NL -I$SRC/newlib-cygwin/newlib/libc/stdio

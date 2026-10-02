@@ -416,8 +416,8 @@ extraction, which is a natural first job for the `rof2elf` tooling (§6).
   difference doesn't affect library interoperability.
 - **With `-m68881`**, GCC normally returns float and double in fp0. Under `-mos9call` they stay in
   d0 (float) and d0:d1 (double), as Ultra C 2.5 does even when it uses the FPU.
-- **`long double` and `_Complex` types** are returned in memory, like structs (buffer address in
-  a0).
+- **`long double`, `_Complex` and vector types** are returned in memory, like structs (buffer
+  address in a0). Vectors are passed on the stack too.
 - **Structs.** The two Microware compilers are incompatible here (§3), so `-mos9call` had to pick
   one:
   - **Microware C 3.2 (static buffer, PCC convention), not chosen:** the callee returns the address
@@ -475,7 +475,8 @@ manual and the observed output), while d0 is never preserved. So:
 | `-malign-int`, `-fshort-enums`, `-fpack-struct` | warning | they change the data layout, which otherwise matches Microware C 3.2 exactly (§3) |
 | `-pg`, `-finstrument-functions` | rejected for now | the profiler call sequence clobbers a0, and `mcount` and the instrumentation hooks would have to preserve the incoming d0/d1 |
 | `-fprofile-arcs`, `-fprofile-generate` | rejected for now | they call libgcov (`__gcov_init`, the `__gcov_*_profiler` routines) through declarations with plain function types, so under the flag those calls would be os9call, but libgcov is built without it |
-| `__builtin_apply`, `__builtin_apply_args`, `__builtin_return` | unsupported for now (error) | they forward arguments by saving all possible argument and return registers; untested with d0/d1 arguments, and rarely used |
+| `__builtin_apply`, `__builtin_apply_args`, `__builtin_return` | unsupported for now (error, once per file) | they forward arguments by saving all possible argument and return registers; untested with d0/d1 arguments, and rarely used. As implemented, the error comes from the raw-mode hooks (`TARGET_GET_RAW_ARG_MODE`/`TARGET_GET_RAW_RESULT_MODE`), which only these built-ins use |
+| other m68k targets | `-mos9call` is an error, the attributes are ignored with a warning | return values and struct return are only handled for `elfos9` (`M68K_OS9_TARGET` in `m68k-os9.h`) |
 
 **Callbacks and entry points.** Code called from outside GCC-compiled code must use the matching
 convention, which `-mos9call` provides:
@@ -556,12 +557,12 @@ Insertion points in the GCC 11 tree (`gcc/config/m68k/`; line numbers approximat
 | `m68k.c`, `m68k_attribute_table` | target attributes | add `stackcall` and `os9call` as *type* attributes (like x86's `stdcall`, unlike m68k's declaration-only `interrupt*` attributes), with `affects_type_identity` set, so they can appear in function-pointer types and typedefs |
 | `m68k.c`, attribute handlers (C++ mangling) | how function types appear in C++ mangled names | nothing to add for mangling itself (the C++ front end mangles identity-affecting type attributes as written); the handlers drop the attribute that matches the flag's default (`os9call` under `-mos9call`, `stackcall` without it), so each type has one mangling |
 | `m68k.c`, `TARGET_COMP_TYPE_ATTRIBUTES` (new) | whether two function types' attributes are compatible | function types with different *effective* conventions are incompatible (no attribute means `os9call` under `-mos9call` and `stackcall` without it), so assigning between them is diagnosed, and in C++ they're distinct types |
-| `m68k-os9.h`, `FUNCTION_VALUE` (or a new `TARGET_FUNCTION_VALUE`) | where return values go | on `elfos9`, `m68kemb.h` maps `FUNCTION_VALUE` to `LIBCALL_VALUE`, so `m68k_function_value` is never used. Redefine it to decide from the function type: for os9call functions, float and double in d0 / d0:d1 even with `-m68881`. `m68k_libcall_value` stays unchanged, since libcalls keep the stack convention |
+| `m68k.c`, `TARGET_FUNCTION_VALUE` (new) | where return values go | for os9call functions, all values in d0 / d0:d1, float and double too, even with `-m68881`; otherwise the existing `FUNCTION_VALUE` macro (on `elfos9`, `m68kemb.h` maps it to `LIBCALL_VALUE`). It has to be the hook, not the macro: the macro only gets the declaration, so indirect calls would miss the convention (found by the implementation review). `m68k_libcall_value` stays unchanged |
 | `m68k.c`, `m68k_option_override` | option sanity checks | the option rules in "Options and special cases": reject `-mshort`, `-mrtd`, `-pg`, `-finstrument-functions`, `-fprofile-arcs`, `-fprofile-generate`, `-fuse-cxa-atexit`, `-fstack-limit-symbol` and `-fstack-limit-register` with d0/d1, and `-mos9stkchk` without `-ma6rel`; warn for `-m68881`, missing `-ma6rel`, and the layout-changing `-malign-int`, `-fshort-enums` and `-fpack-struct` |
 | `m68k.c`, `TARGET_INSERT_ATTRIBUTES` (new) | adds attributes to every declaration as it's created, GCC's built-in declarations included | under `-mos9call`, add `stackcall` to declarations and typedefs of the names listed in "Libraries" that have no convention attribute: built-ins (by library name), headers, definitions and K&R redeclarations alike |
 | `m68k.c`, `TARGET_SETUP_INCOMING_VARARGS` (new) | called for each variadic function definition | until the callee side exists, an error for variadic functions with the OS-9 convention |
 | `m68k.c` ~7065, `m68k_trampoline_init` | builds a nested function's trampoline | an error for nested functions with the OS-9 convention |
-| `m68k.md` ~6062, `untyped_call` expander | implements `__builtin_apply` | an error under the OS-9 convention (`__builtin_apply_args` and `__builtin_return` likewise) |
+| `m68k.c`, `TARGET_GET_RAW_ARG_MODE`/`TARGET_GET_RAW_RESULT_MODE` (new) | register modes for `__builtin_apply_args`, `__builtin_apply`, `__builtin_return` | an error under `-mos9call`, once per file |
 | `m68k.c` ~1036, `m68k_expand_prologue` (later, `-mos9stkchk`) | emits the prologue | the `_stkcheck` sequence of "Stack checking", at the start, with its register saves; not in `interrupt_handler` functions |
 
 Background in the GCC internals manual: "Passing Arguments in Registers", "How Scalar Function
@@ -609,7 +610,9 @@ so adding the flag there is easy. Deferred. These cases need care:
     libgcc calls them
   - `strlen`, `malloc` and `free`: newlib defines them in C, but libgcc calls them (the DWARF
     unwinder and emulated TLS)
-  - entry points defined in libgcc or libatomic (`_Unwind_Resume`, `__atomic_*`, …)
+  - entry points defined in libgcc or libatomic (`_Unwind_Resume`, `__atomic_*`, …), including the
+    complex multiply and divide helpers (`__mulsc3` … `__divxc3`), which GCC also calls through
+    built-in declarations (found by the implementation review)
   - `abort` (also called by libgcc) takes no arguments and never returns, so either convention
     works; it's listed for type consistency
 
@@ -631,7 +634,8 @@ so adding the flag there is easy. Deferred. These cases need care:
   agree, and GCC keeps treating the functions as built-ins. newlib's headers and C definitions
   need no changes, and its m68k assembly versions stay as they are.
 - **Other assembly sources don't follow the flag.** newlib's m68k `setjmp.S` reads its arguments
-  from the stack, so `setjmp`/`longjmp` are declared `stackcall` (or get os9call variants).
+  from the stack, so `setjmp`/`longjmp` will need `stackcall` declarations (or os9call variants)
+  when newlib is built with the flag (§12).
 - **libsupc++** (built with the flag) calls `_Unwind_*` through the declarations in `unwind.h`,
   which aren't built-ins. Calls also go the other way: the unwinder calls the personality routine
   (`__gxx_personality_v0`) and the exception cleanup function through function pointers. The
@@ -1375,6 +1379,10 @@ test/
      `-m68000 --pcrel` for hand-written assembly; making the binutils build default to the 68000
      remains an option
    - research: the Microware C 3.2 `.dbg` format for SrcDbg (§6)
+   - an upstream latent bug: an `interrupt_handler` function with an FPU and a frame of 32 KB or
+     more restores its FPU registers through a1 after restoring a1. OS-9 convention functions
+     avoid it (FPU registers first, a1 last); interrupt handlers are left unchanged to keep code
+     built without the flag identical
    - libgcc's soft-float routines (`lb1sf68.S`, assembled as PIC because of `-mpcrel`) read their
      rounding mode `_fpCCR` through the GOT, and in a static link with the README's linker script
      the GOT reference resolves to the wrong word (found by the Level 2 harness; independent of

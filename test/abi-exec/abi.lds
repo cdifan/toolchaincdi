@@ -22,4 +22,5 @@ SECTIONS {
         *(COMMON)
         . = ALIGN(2);
     }
+    end = .;
 }

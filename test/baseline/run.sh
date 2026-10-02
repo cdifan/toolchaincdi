@@ -21,6 +21,7 @@ VARIANTS=(
   "O2:-O2 -mpcrel -ma6rel"
   "O2bsrw:-O2 -mpcrel -ma6rel -mbsrw"
   "Osfp:-Os -mpcrel -ma6rel -fomit-frame-pointer -ffunction-sections"
+  "O2fpu:-O2 -mpcrel -ma6rel -m68020 -m68881 -fno-omit-frame-pointer"
 )
 rm -rf "$WORK"; mkdir -p "$WORK/i" "$WORK/ref" "$WORK/new"
 fail=0; n=0

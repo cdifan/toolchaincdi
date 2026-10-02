@@ -32,6 +32,12 @@ int divide (int a) { return a / divisor; }
    must not be deleted as dead.  */
 int only_scratch (int a) { clobber (); return 1; }
 
+/* A variable-size frame (alloca).  */
+int varframe (int n) { char *p = __builtin_alloca (n); p[0] = n; clobber (); return p[0]; }
+
+/* A nested function, called directly: the static chain goes in a1.  */
+int outer (int a) { int inner (int b) { clobber (); return a + b; } return inner (2); }
+
 /* A long long argument and result occupy d0:d1.  */
 long long ladd (long long x) { clobber (); return x + 1; }
 
@@ -79,5 +85,9 @@ main (void)
   check (m == 0 && mw_result == 0 && mw_result2 == 6, 9);
   m = mwcall (only_scratch, 3, 0, D1_FREE);
   check (m == 0 && mw_result == 1, 10);
+  m = mwcall (varframe, 20, 0, D1_FREE);
+  check (m == 0 && mw_result == 20, 11);
+  m = mwcall (outer, 40, 0, D1_FREE);
+  check (m == 0 && mw_result == 42, 12);
   return fails;
 }
