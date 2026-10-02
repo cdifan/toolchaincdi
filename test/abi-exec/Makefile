@@ -4,6 +4,7 @@
 #   make                 build everything and run the tests (-O2)
 #   make check           run the tests at -O0, -O2, -Os and -O3, and with
 #                        -m68020 -m68881 on an emulated 68040
+#   make check-mw MWLIB=DIR  also link with Microware's C library (see below)
 #   make GCC=...         compiler driver to test
 #   make BUILD=...       build directory (default ~/build/abi-exec)
 
@@ -65,8 +66,40 @@ check:
 	  $(MAKE) --no-print-directory BUILD=$(BUILD)/fpu ABIRUN_FLAGS="-c 68040" \
 	    CFLAGS_T="-O2 -m68020 -m68881 -mpcrel -ma6rel -mos9call -w" run
 
+# Level 3 (partial): tests linked with Microware's C library (cstart.r,
+# clib.l), converted with rof2elf from src/elf2mod.  Microware's files
+# are proprietary and not included: point MWLIB at a directory holding
+# cstart.r, clib.l and sys.l (lower or upper case).
+#   make check-mw MWLIB=/path/to/LIB
+MWLIB    ?=
+CFLAGS_MW = -O2 -mpcrel -ma6rel -mos9call -mbuiltin=os9call -w
+MWTESTS   = $(basename $(notdir $(wildcard $(HERE)mwtests/*.c)))
+mwfile    = $(firstword $(wildcard $(MWLIB)/$(1) $(MWLIB)/$(shell echo $(1) | tr a-z A-Z)))
+
+$(BUILD)/rof2elf: $(HERE)../../src/elf2mod/rof2elf.c
+	mkdir -p $(BUILD)
+	$(HOSTCC) -O2 -o $@ $<
+
+$(BUILD)/mw/cstart.o $(BUILD)/mw/clib.a: $(BUILD)/rof2elf
+	@[ -n "$(call mwfile,clib.l)" ] || { echo "check-mw: set MWLIB to the directory with cstart.r, clib.l and sys.l"; exit 2; }
+	mkdir -p $(BUILD)/mw
+	$(BUILD)/rof2elf -e $(call mwfile,sys.l) -o $(BUILD)/mw/cstart.o $(call mwfile,cstart.r)
+	$(BUILD)/rof2elf -e $(call mwfile,sys.l) -o $(BUILD)/mw/clib.a $(call mwfile,clib.l)
+	$(TPREFIX)ranlib $(BUILD)/mw/clib.a
+
+$(BUILD)/mw/%.elf: $(HERE)mwtests/%.c $(HERE)crt0.S $(HERE)abi.lds $(BUILD)/mw/cstart.o $(BUILD)/mw/clib.a
+	$(GCC) -c $(CFLAGS_MW) -o $(BUILD)/mw/$*.o $<
+	$(TPREFIX)as -m68000 --pcrel -o $(BUILD)/mw/crt0.o $(HERE)crt0.S
+	$(TPREFIX)ld -T $(HERE)abi.lds -o $@ $(BUILD)/mw/crt0.o $(BUILD)/mw/$*.o \
+	  $(BUILD)/mw/cstart.o $(BUILD)/mw/clib.a $(LIBGCC)
+
+check-mw: $(BUILD)/abirun $(MWTESTS:%=$(BUILD)/mw/%.elf)
+	@fail=0; for t in $(MWTESTS); do \
+	  if $(BUILD)/abirun $(BUILD)/mw/$$t.elf; then echo "PASS: mw/$$t"; \
+	  else echo "FAIL: mw/$$t"; fail=1; fi; done; exit $$fail
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all run check clean
+.PHONY: all run check check-mw clean
 .SECONDARY:

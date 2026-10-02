@@ -397,9 +397,11 @@ in d1), and that port's own callers put unnamed arguments on the stack, so it's 
 evidence rather than proof. It's also a simple model for GCC's callee side: save d0/d1, then
 continue with the stack arguments.
 
-**Open research item:** disassemble a variadic Microware C 3.2 library function (e.g. `printf` from
-the CD-i `clib.l`) to confirm that the library itself reads its arguments this way. That needs ROF
-extraction, which is a natural first job for the `rof2elf` tooling (§6).
+**Confirmed by running the library:** with the CD-i `clib.l` converted by `rof2elf` (§6) and linked
+with `-mos9call` code, Microware C 3.2's `sprintf` and `sscanf` read their arguments correctly
+when called with this positional placement: `sprintf(buf, "%d %s %x %c", -7, "str", 255, 'z')`
+gives `-7 str ff z` (Level 3, §11). Doubles as unnamed arguments are untested, since printing them
+needs OS-9's math trap handler.
 
 ### Return values
 
@@ -1318,6 +1320,12 @@ bridge (§9) for automation.
   link them with GCC `-mos9call` objects, convert with `elf2mod`, and run the result in CD-i
   Emulator (§9). Calls go both ways.
 - Also link against the CD-i libraries (`clib.l`, `cdisys.l`) and call real library functions.
+- **Done so far, without OS-9:** `make check-mw MWLIB=…` in `test/abi-exec` converts the local
+  `cstart.r`, `clib.l` and `sys.l` with `rof2elf` and runs `mwtests/` in the Level 2 emulator. The
+  test calls `strlen`, `atoi`, `strcmp`, `strcpy`, `strcat`, `sprintf`, `sscanf`, `toupper`,
+  `index` and `atol`; Microware's `qsort` calls back a GCC comparator; and GCC's own `memcpy`
+  for a struct copy goes to `clib`'s (with `-mbuiltin=os9call`). Functions that make system calls
+  (memory, I/O, floating point through the math trap) need the real OS-9 in CD-i Emulator.
 - **`rof2elf`/`elf2rof` round trips:** convert ROF → ELF → ROF and compare with `rdump`. Convert
   ELF → ROF and link with `l68`.
 
@@ -1342,6 +1350,7 @@ test/
 ├── os9c/          the Microware C probe and its Microware C 3.2 / Ultra C 2.5 outputs
 ├── baseline/      Level 0: the corpus list and the compile-and-diff script
 └── abi-exec/      Level 2: emulator harness, assembly stubs and tests
+    ├── mwtests/   Level 3 (partial): tests linked with Microware's converted C library
     └── musashi/   68000 emulator library (submodule)
 ```
 
@@ -1360,11 +1369,12 @@ test/
    any compiler change. Level 2 follows before implementation phase 3.
 3. **`-mos9call`:** implement per §4, on GCC 11.1 (§2), phase by phase, each phase gated by the
    test levels (§11). Optionally cross-check against a disassembly of `clib.l`.
-4. **`rof2elf`:** write it, convert the CD-i libraries, and work out the linker script and
-   `elf2mod` changes (remote data, mainline header, linker-defined symbols, and how ROF's 4-byte
-   references map onto `elf2mod`'s relocations). This enables Level 3. Use it early to extract and
-   disassemble a variadic Microware C 3.2 library function (e.g. `printf` from `clib.l`), to
-   confirm how Microware C 3.2 code reads variadic arguments (§4).
+4. **`rof2elf`:** done, in `cdifan/elf2mod` (`rof2elf.md` there). It converts the CD-i libraries
+   and `cstart.r`; 4-byte references to data and equates are link-time constants, which `elf2mod`
+   now accepts in code; the mainline header becomes `__os9_*` symbols; the linker script must
+   define `end`. Still open: remote data in `elf2mod` and the linker script, and using the
+   `__os9_*` symbols in `elf2mod`'s module header. Level 3 runs partly (§11); Microware C 3.2's
+   variadic functions were confirmed by running them (§4).
 5. **`elf2rof`**, then the deferred items:
    - porting the fork to GCC 17 (§2)
    - enabling C++ in the toolchain build (`--enable-languages=c,c++`); the C++ parts of
