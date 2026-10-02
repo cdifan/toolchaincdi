@@ -28,6 +28,10 @@ int nonleaf2 (int a, int b) { clobber (); return a + b; }
 /* Libcalls (division) also destroy d1, a0 and a1.  */
 int divide (int a) { return a / divisor; }
 
+/* Saves only call-clobbered registers (d1, a0, a1): their restores
+   must not be deleted as dead.  */
+int only_scratch (int a) { clobber (); return 1; }
+
 /* A long long argument and result occupy d0:d1.  */
 long long ladd (long long x) { clobber (); return x + 1; }
 
@@ -73,5 +77,7 @@ main (void)
   /* ladd: x = 5 in d0:d1 (d1 carries the argument and the result).  */
   m = mwcall (ladd, 0, 5, 0);
   check (m == 0 && mw_result == 0 && mw_result2 == 6, 9);
+  m = mwcall (only_scratch, 3, 0, D1_FREE);
+  check (m == 0 && mw_result == 1, 10);
   return fails;
 }
