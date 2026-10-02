@@ -13,9 +13,15 @@
    the run with that value as the exit status.  An exception (illegal
    instruction, address error, ...) or running too long fails the run.
 
-   Usage: abirun [-t] [-c 68040] image.elf
+   With -m, the file is an OS-9 module instead (elf2mod output): it's
+   loaded at MOD_BASE, its initialized data copied to DATA_BASE and its
+   initialized data references relocated, as OS-9 does, and a6 points at
+   DATA_BASE + 0x8000.
+
+   Usage: abirun [-t] [-c 68040] [-m] file
      -t  trace every instruction
-     -c  emulate a 68040 (with FPU, for -m68881 code) instead of a 68000  */
+     -c  emulate a 68040 (with FPU, for -m68881 code) instead of a 68000
+     -m  the file is an OS-9 module  */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,6 +30,7 @@
 
 #define MEM_SIZE    0x1000000		/* the 68000's 24-bit address space */
 #define DATA_BASE   0x800000		/* where data linked at -0x8000 goes */
+#define MOD_BASE    0x400000		/* where an OS-9 module goes (-m) */
 #define STACK_TOP   0xE00000
 #define VECTOR_TRAP 0xF00100		/* all exception vectors point here */
 #define IO_PUTCHAR  0xF00000
@@ -242,6 +249,99 @@ load_elf (const char *file)
   return entry;
 }
 
+/* Read the whole file NAME.  */
+
+static unsigned char *
+read_file (const char *name, long *size)
+{
+  FILE *f = fopen (name, "rb");
+  unsigned char *img;
+
+  if (f == NULL || fseek (f, 0, SEEK_END) != 0 || (*size = ftell (f)) < 0)
+    {
+      fprintf (stderr, "abirun: can't read %s\n", name);
+      exit (2);
+    }
+  img = malloc (*size ? *size : 1);
+  rewind (f);
+  if (fread (img, 1, *size, f) != (size_t) *size)
+    {
+      fprintf (stderr, "abirun: can't read %s\n", name);
+      exit (2);
+    }
+  fclose (f);
+  return img;
+}
+
+/* Apply one list of initialized data references (hi16, count, count
+   lo16 offsets, ..., ending with 0,0) at P: add BASE to each long at
+   DATA_BASE + offset.  Return the position after the list.  */
+
+static const unsigned char *
+relocate_irefs (const unsigned char *p, unsigned long base)
+{
+  for (;;)
+    {
+      unsigned hi = get16 (p), n = get16 (p + 2);
+      p += 4;
+      if (n == 0)
+	return p;
+      while (n--)
+	{
+	  unsigned long a = DATA_BASE + ((unsigned long) hi << 16) + get16 (p);
+	  unsigned long v = get32 (mem + a) + base;
+	  mem[a] = v >> 24;
+	  mem[a + 1] = v >> 16;
+	  mem[a + 2] = v >> 8;
+	  mem[a + 3] = v;
+	  p += 2;
+	}
+    }
+}
+
+/* Load the OS-9 module FILE as OS-9 would; return its entry point.  */
+
+static unsigned long
+load_module (const char *file)
+{
+  long size;
+  unsigned char *m = read_file (file, &size);
+  unsigned long msize, exec, dsize, idata, irefs, off, len;
+  const unsigned char *p;
+
+  if (size < 0x48 || get16 (m) != 0x4AFC)
+    {
+      fprintf (stderr, "abirun: %s isn't an OS-9 module\n", file);
+      exit (2);
+    }
+  msize = get32 (m + 4);
+  exec = get32 (m + 0x30);
+  dsize = get32 (m + 0x38);
+  idata = get32 (m + 0x40);
+  irefs = get32 (m + 0x44);
+  if (msize > (unsigned long) size || MOD_BASE + msize > DATA_BASE
+      || DATA_BASE + dsize > STACK_TOP - 0x10000)
+    {
+      fprintf (stderr, "abirun: module %s doesn't fit\n", file);
+      exit (2);
+    }
+  memcpy (mem + MOD_BASE, m, msize);
+  memset (mem + DATA_BASE, 0, dsize);
+  if (idata)
+    {
+      off = get32 (m + idata);
+      len = get32 (m + idata + 4);
+      memcpy (mem + DATA_BASE + off, m + idata + 8, len);
+    }
+  if (irefs)
+    {
+      p = relocate_irefs (m + irefs, MOD_BASE);	/* code references */
+      relocate_irefs (p, DATA_BASE);		/* data references */
+    }
+  free (m);
+  return MOD_BASE + exec;
+}
+
 static void
 put32 (unsigned address, unsigned long value)
 {
@@ -256,12 +356,14 @@ main (int argc, char **argv)
 {
   unsigned long entry;
   long steps = 0;
-  int i;
+  int i, module = 0;
 
   for (;;)
     {
       if (argc > 1 && strcmp (argv[1], "-t") == 0)
 	trace = 1;
+      else if (argc > 1 && strcmp (argv[1], "-m") == 0)
+	module = 1;
       else if (argc > 2 && strcmp (argv[1], "-c") == 0
 	       && strcmp (argv[2], "68040") == 0)
 	{
@@ -274,11 +376,11 @@ main (int argc, char **argv)
     }
   if (argc != 2)
     {
-      fprintf (stderr, "usage: abirun [-t] [-c 68040] image.elf\n");
+      fprintf (stderr, "usage: abirun [-t] [-c 68040] [-m] file\n");
       return 2;
     }
 
-  entry = load_elf (argv[1]);
+  entry = module ? load_module (argv[1]) : load_elf (argv[1]);
   put32 (0, STACK_TOP);
   put32 (4, entry);
   for (i = 2; i < 256; i++)

@@ -916,6 +916,14 @@ linker. We do it in `elf2mod`, after linking, which keeps binutils unchanged:
 - **Converted Microware objects** call externals with `bsr.w` and rely on this mechanism, so it
   covers them too.
 
+**As implemented** (`cdifan/elf2mod`, `elf2mod.md` there): as above, with the table reserved
+from `_jmptbl` to `_ejmptbl` at the end of `.data` (`--defsym __jmptbl_size=N` in the test
+linker script). Since the data layout now puts `.bss` first (see "Data beyond 64 KB"), the table
+sits at the end of the initialized data, as with `l68`. Tested by running modules: the Level 2
+harness (`abirun -m`) loads an `elf2mod` module as OS-9 does (copying the initialized data and
+relocating its references), and `make check-mod` runs every Level 2 test as a module, plus
+`modtests/far.c`, whose `bsr.w`, `bra.w`, `lea` and `pea` references cross 40 KB of code.
+
 #### Branches within a function
 
 The jump table only covers calls and address loads. Branches *within* a function are limited to
@@ -1421,7 +1429,6 @@ test/
    - caller-side use of preserved a0/a1
    - the emulator serial bridge
    - `.stb` symbol modules from `elf2mod` (§6)
-   - large programs (§6): the `_jmptbl` jump table in `elf2mod` (the `remote` attribute is done)
    - the assembler's default CPU (§6, "Branches within a function"): the README now documents
      `-m68000 --pcrel` for hand-written assembly; making the binutils build default to the 68000
      remains an option

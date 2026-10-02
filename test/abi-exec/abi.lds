@@ -27,6 +27,10 @@ SECTIONS {
     .data : {
         *(.data .data.*)
         . = ALIGN(2);
+        /* elf2mod's jump table for far calls: --defsym __jmptbl_size=N */
+        _jmptbl = .;
+        . += DEFINED(__jmptbl_size) ? __jmptbl_size : 0;
+        _ejmptbl = .;
     }
     .remote.data : {
         *(.remote.data .remote.data.*)

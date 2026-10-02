@@ -5,6 +5,7 @@
 #   make check           run the tests at -O0, -O2, -Os and -O3, and with
 #                        -m68020 -m68881 on an emulated 68040
 #   make check-mw MWLIB=DIR  also link with Microware's C library (see below)
+#   make check-mod       run the tests as OS-9 modules made by elf2mod (see below)
 #   make GCC=...         compiler driver to test
 #   make BUILD=...       build directory (default ~/build/abi-exec)
 
@@ -98,8 +99,51 @@ check-mw: $(BUILD)/abirun $(MWTESTS:%=$(BUILD)/mw/%.elf)
 	  if $(BUILD)/abirun $(BUILD)/mw/$$t.elf; then echo "PASS: mw/$$t"; \
 	  else echo "FAIL: mw/$$t"; fail=1; fi; done; exit $$fail
 
+# Modules: the tests linked with -q, converted by elf2mod (from
+# src/elf2mod, with the BFD library under BFDPATH) and run as OS-9 modules
+# (abirun -m); plus modtests/, whose far calls go through elf2mod's
+# _jmptbl (linked with --noinhibit-exec, which keeps the output despite
+# the truncated relocations).
+#   make check-mod
+BFDPATH  ?= $(HOME)/build/install/x86_64-pc-linux-gnu/m68k-elfos9
+JMPTBL    = 60
+MODTESTS  = $(basename $(notdir $(wildcard $(HERE)modtests/*.c)))
+
+$(BUILD)/elf2mod: $(HERE)../../src/elf2mod/elf2mod.c
+	mkdir -p $(BUILD)
+	tr -d '\r' < $< > $(BUILD)/elf2mod.c
+	$(HOSTCC) -O2 -w -I$(BFDPATH)/include -o $@ $(BUILD)/elf2mod.c \
+	  $(BFDPATH)/lib/libbfd.a -liberty -lz -ldl
+
+$(BUILD)/%.mod: $(BUILD)/%.elf $(BUILD)/elf2mod
+	$(TPREFIX)ld -q --no-check-sections -T $(HERE)abi.lds -o $(BUILD)/$*.qelf \
+	  $(BUILD)/crt0.o $(BUILD)/$*.o $(BUILD)/$*-stubs.o $(BUILD)/support.o $(LIBGCC)
+	$(BUILD)/elf2mod $(BUILD)/$*.qelf $@ > /dev/null
+
+$(BUILD)/far/%.mod: $(HERE)modtests/%.c $(HERE)modtests/%.S $(HERE)crt0.S $(HERE)support.S $(HERE)abi.lds $(BUILD)/elf2mod
+	mkdir -p $(BUILD)/far
+	$(GCC) -c $(CFLAGS_T) -o $(BUILD)/far/$*.o $<
+	$(TPREFIX)as -m68000 --pcrel -o $(BUILD)/far/$*-stubs.o $(HERE)modtests/$*.S
+	$(TPREFIX)as -m68000 --pcrel -o $(BUILD)/far/crt0.o $(HERE)crt0.S
+	$(TPREFIX)as -m68000 --pcrel -o $(BUILD)/far/support.o $(HERE)support.S
+	$(TPREFIX)ld -q --noinhibit-exec --no-check-sections \
+	  --defsym __jmptbl_size=$(JMPTBL) -T $(HERE)abi.lds -o $(BUILD)/far/$*.elf \
+	  $(BUILD)/far/crt0.o $(BUILD)/far/$*.o $(BUILD)/far/$*-stubs.o \
+	  $(BUILD)/far/support.o $(LIBGCC) 2> $(BUILD)/far/$*.ld.log
+	$(BUILD)/elf2mod $(BUILD)/far/$*.elf $@
+
+run-mod: $(BUILD)/abirun $(TESTS:%=$(BUILD)/%.mod) $(MODTESTS:%=$(BUILD)/far/%.mod)
+	@fail=0; for t in $(TESTS:%=$(BUILD)/%.mod) $(MODTESTS:%=$(BUILD)/far/%.mod); do \
+	  if $(BUILD)/abirun $(ABIRUN_FLAGS) -m $$t; then echo "PASS: $$(basename $$t)"; \
+	  else echo "FAIL: $$(basename $$t)"; fail=1; fi; done; exit $$fail
+
+check-mod:
+	@for o in O2 O2bsrw; do echo "== modules, -$$o"; \
+	  $(MAKE) --no-print-directory BUILD=$(BUILD)/mod-$$o \
+	    CFLAGS_T="$$(echo -$$o | sed 's/bsrw/ -mbsrw/') -mpcrel -ma6rel -mos9call" run-mod || exit 1; done
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all run check check-mw clean
+.PHONY: all run run-mod check check-mw check-mod clean
 .SECONDARY:
