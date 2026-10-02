@@ -70,11 +70,16 @@ else echo "FAIL: symbol module (see $work/stb.diff)"; fail=1; fi
 irefs=$(od -A n -t u4 --endian=big -j 0x44 -N 4 prog | tr -d ' ')
 if cmp -n "$irefs" prog gprog; then echo "PASS: program module"
 else echo "FAIL: program module"; fail=1; fi
+# The relocation tables, as sorted lists.
+if [ "$(perl "$here/irefs.pl" prog)" = "$(perl "$here/irefs.pl" gprog)" ]; then
+  echo "PASS: relocation tables"
+else echo "FAIL: relocation tables"; fail=1; fi
 # The round trip: l68 must link the same module from the ROFs that went
 # through rof2elf and elf2rof.  Under vDos, vdos.bat links them (prog2)
 # when they're there.
 if [ -z "$MWBUILT" ]; then
-  X l68.exe -n=prog -o=prog2 cstart2.r prog2.r -l=clib2.l -l=sys.l > l68rt.log 2>&1 || cat l68rt.log
+  X l68.exe -n=prog -o=prog2 cstart2.r prog2.r -l=clib2.l -l=sys.l > l68rt.log 2>&1 ||
+    { cat l68rt.log; echo "FAIL: round trip (l68 failed)"; fail=1; }
 elif ls "$MWBUILT"/* | grep -qi "/prog2\$"; then
   fetch "$MWBUILT" prog2 prog2
 else

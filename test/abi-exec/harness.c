@@ -42,16 +42,19 @@ static unsigned char mem[MEM_SIZE];
 static int done, exit_status, trace;
 static unsigned cpu_type = M68K_CPU_TYPE_68000;
 
-/* Data is linked from -0x8000.  Absolute references to it (libgcc's
-   soft-float code reads its rounding mode through the GOT) come out as
-   0xFF8000 and up in the 24-bit address space; map them onto the data
-   area, like a6-relative accesses.  */
+/* Data is linked from -0x8000.  In an ELF image, pointers to data are
+   absolute (not relocated as OS-9 relocates a module's), 0xFF8000 and up
+   in the 24-bit address space: map them onto the data area, like a6-
+   relative accesses.  Not for modules (-m), where every access to data
+   goes through a6 or a relocated pointer: a broken a6 must show.  */
+
+static int alias_data = 1;
 
 static unsigned
 map (unsigned address)
 {
   address &= MEM_SIZE - 1;
-  if (address >= 0xFF8000)
+  if (alias_data && address >= 0xFF8000)
     address = address - 0xFF8000 + DATA_BASE;
   return address;
 }
@@ -436,6 +439,7 @@ main (int argc, char **argv)
       free (m);
       return 0;
     }
+  alias_data = !module;
   entry = module ? load_module (argv[1]) : load_elf (argv[1]);
   put32 (0, STACK_TOP);
   put32 (4, entry);

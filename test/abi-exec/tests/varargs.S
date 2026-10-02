@@ -9,17 +9,20 @@
 | sum (3, 10, 20, 30): n in d0, 10 in d1, 20 and 30 on the stack.
 	.globl	call_sum
 call_sum:
+	move.l	%d1,-(%sp)		| d1 carries no argument or result: keep it
 	pea	30.w
 	pea	20.w
 	moveq	#10,%d1
 	moveq	#3,%d0
 	jsr	sum(%pc)
 	addq.l	#8,%sp
+	move.l	(%sp)+,%d1
 	rts
 
 | mix ("idi", 7, 1.5, 9): fmt in d0, 7 in d1, 1.5 and 9 on the stack.
 	.globl	call_mix_idi
 call_mix_idi:
+	move.l	%d1,-(%sp)		| d1 carries no argument or result: keep it
 	pea	9.w
 	clr.l	-(%sp)
 	move.l	#0x3FF80000,-(%sp)
@@ -28,11 +31,13 @@ call_mix_idi:
 	move.l	(%sp)+,%d0		| keep across OS-9 convention calls
 	jsr	mix(%pc)
 	lea	12(%sp),%sp
+	move.l	(%sp)+,%d1
 	rts
 
 | mix ("di", 1.5, 9): fmt in d0, the double on the stack, d1 unused.
 	.globl	call_mix_di
 call_mix_di:
+	move.l	%d1,-(%sp)		| d1 carries no argument or result: keep it
 	pea	9.w
 	clr.l	-(%sp)
 	move.l	#0x3FF80000,-(%sp)
@@ -41,28 +46,33 @@ call_mix_di:
 	move.l	(%sp)+,%d0
 	jsr	mix(%pc)
 	lea	12(%sp),%sp
+	move.l	(%sp)+,%d1
 	rts
 
 | two (1, 2, 3, 4): a in d0, b in d1, 3 and 4 on the stack.
 	.globl	call_two
 call_two:
+	move.l	%d1,-(%sp)		| d1 carries no argument or result: keep it
 	pea	4.w
 	pea	3.w
 	moveq	#2,%d1
 	moveq	#1,%d0
 	jsr	two(%pc)
 	addq.l	#8,%sp
+	move.l	(%sp)+,%d1
 	rts
 
 | dfirst (1.5, 7, 8): the double in d0:d1, 7 and 8 on the stack.
 	.globl	call_dfirst
 call_dfirst:
+	move.l	%d1,-(%sp)		| d1 carries no argument or result: keep it
 	pea	8.w
 	pea	7.w
 	move.l	#0x3FF80000,%d0
 	moveq	#0,%d1
 	jsr	dfirst(%pc)
 	addq.l	#8,%sp
+	move.l	(%sp)+,%d1
 	rts
 
 fmt_idi:	.asciz	"idi"

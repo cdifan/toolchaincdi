@@ -13,11 +13,18 @@ See [OS9-COMPAT-DESIGN.md](OS9-COMPAT-DESIGN.md) for the design and current stat
 [`test/os9c/`](test/os9c/) holds two Microware C probes, for the calling convention and for stack
 checking.
 
-GCC now comes from [cdifan/gcc](https://github.com/cdifan/gcc), a fork of
-[gcc-mirror/gcc](https://github.com/gcc-mirror/gcc). Its `11.1.0-os9` branch is Murachue's work,
-unchanged. elf2mod comes from [cdifan/elf2mod](https://github.com/cdifan/elf2mod)
-(branch `main-compat`), which adds `rof2elf` and `elf2rof`. The other submodules still point at Murachue's
-repositories.
+On the `compat-dev` branch, three submodules come from forks under
+[github.com/cdifan](https://github.com/cdifan), each on a `-compat` branch next to Murachue's
+unchanged one:
+- GCC from [cdifan/gcc](https://github.com/cdifan/gcc) (`11.1.0-os9-compat`; `11.1.0-os9` is
+  Murachue's work)
+- newlib from [cdifan/newlib-cygwin](https://github.com/cdifan/newlib-cygwin)
+  (`newlib-4.1.0-os9-compat`: `setjmp`/`longjmp` for `-mos9call`)
+- elf2mod from [cdifan/elf2mod](https://github.com/cdifan/elf2mod) (`main-compat`, which adds
+  `rof2elf` and `elf2rof`)
+
+binutils and psximager still point at Murachue's repositories. `main` keeps Murachue's
+toolchain until `compat-dev` is merged.
 
 # Ingredients
 

@@ -30,14 +30,15 @@ Contents:
 
 ## 1. Current toolchain
 
-The [`Dockerfile`](Dockerfile) builds, from the pinned submodules under `src/`:
+The [`Dockerfile`](Dockerfile) builds, from the pinned submodules under `src/` (as on `compat-dev`;
+`main` still pins Murachue's GCC, newlib and elf2mod):
 
 | Component | Source | Notes |
 |---|---|---|
 | binutils 2.35 | [murachue/binutils-gdb](https://github.com/murachue/binutils-gdb) `binutils-2_35-branch` | unmodified upstream 2.35; the target name is accepted through generic m68k patterns |
-| GCC 11.1.0 | [cdifan/gcc](https://github.com/cdifan/gcc) `11.1.0-os9` (Murachue's branch, unchanged) | `-mpcrel`, `-ma6rel`, `-mbsrw` (see §2) |
-| newlib 4.1.0 | [murachue/newlib-cygwin](https://github.com/murachue/newlib-cygwin) `newlib-4.1.0-os9` | no syscalls |
-| elf2mod | [murachue/elf2mod](https://github.com/murachue/elf2mod) | linked ELF → OS-9 module |
+| GCC 11.1.0 | [cdifan/gcc](https://github.com/cdifan/gcc) `11.1.0-os9-compat` (Murachue's `11.1.0-os9` plus this work) | `-mpcrel`, `-ma6rel`, `-mbsrw` (see §2), and this work's options |
+| newlib 4.1.0 | [cdifan/newlib-cygwin](https://github.com/cdifan/newlib-cygwin) `newlib-4.1.0-os9-compat` | no syscalls; multilibs for both conventions (§4) |
+| elf2mod | [cdifan/elf2mod](https://github.com/cdifan/elf2mod) `main-compat` | linked ELF → OS-9 module; also `rof2elf`, `elf2rof` (§6) |
 | psximager | [murachue/psximager](https://github.com/murachue/psximager) `cdi` | disc images |
 
 Build flow for an application:
@@ -457,7 +458,9 @@ a library function with one named parameter, such as `printf`, and so OS-9 for i
 Microware C 3.2 callers rely on d1 surviving calls, and callees preserve a0, a1 and d2–d7 (per the
 manual and the observed output), while d0 is never preserved. So:
 
-- An **os9call function (callee)** saves a0/a1 when it uses them or makes calls. That includes a0
+- An **os9call function (callee)** saves a0/a1 when it uses them or makes calls (register renaming
+  and peephole2, which run after the prologue, are kept off registers it didn't save: a review
+  found `-frename-registers` using unsaved a1 and fp1). That includes a0
   when it carried the struct-return buffer address, as in Ultra C 2.5. It also saves d1 when it
   uses d1 or makes calls, unless d1 carries an incoming argument or the return value; the incoming
   argument state tells which. d0 needn't be saved (Microware C 3.2 never restores it; Ultra C 2.5
@@ -479,7 +482,11 @@ manual and the observed output), while d0 is never preserved. So:
   clobbers a0/a1).
   Hand-written assembly called with the OS-9 convention must now really preserve a0/a1: four
   of the Level 2 stubs didn't (`saves.S`, `returns.S`, `varargs.S`), which `tests/saves.c` caught
-  once callers relied on it.
+  once callers relied on it; a review found one more (`modtests/far.S`), and stubs clobbering d1
+  without carrying it, all fixed. newlib's os9call `setjmp` preserves a0 as well.
+  With `-fipa-ra` (on at `-O2`), GCC finds a direct call's ABI from the called declaration
+  through `TARGET_FNTYPE_ABI`, without asking `TARGET_INSN_CALLEE_ABI`: any exclusion must be in
+  `m68k_fntype_abi`.
 - **Tail calls (sibling calls)** from os9call functions are disabled. Otherwise a non-os9call
   callee could clobber a0/a1 (or d1) after the epilogue has restored them.
 
@@ -671,9 +678,8 @@ so adding the flag there is easy. These cases need care:
   wrong convention). So headers, built-ins, definitions and function pointers (`&memcpy`) all
   agree, and GCC keeps treating the functions as built-ins. newlib's headers and C definitions
   need no changes, and its m68k assembly versions stay as they are.
-- **Other assembly sources don't follow the flag.** newlib's m68k `setjmp.S` reads its arguments
-  from the stack, so `setjmp`/`longjmp` will need `stackcall` declarations (or os9call variants)
-  when newlib is built with the flag (§12).
+- **Other assembly sources don't follow the flag.** newlib's m68k `setjmp.S` read its arguments
+  from the stack; it has os9call variants now (below).
 
 **As implemented:** the `m68k-elfos9` GCC has two multilibs, the default and `-mos9call`
 (directory `os9call`; `m68k/t-elfos9`, replacing the per-CPU `t-mlibs`, which the build didn't
@@ -690,7 +696,13 @@ within PC-relative reach. Building newlib this way found two long-standing bugs 
 fixed on branches of their own for Murachue's fork (see "Branches" in §10):
 - read-only variables that hold addresses (`const char *const tbl[]`, newlib's locale tables)
   were addressed PC-relative, though they need relocating and GCC places them in a writable
-  section; now they're data, addressed relative to a6, decided by the type
+  section; now they're data, addressed relative to a6, decided by the type, which every
+  translation unit sees: read-only variables whose type contains pointers, structures or unions
+  (also incomplete ones: an opaque `struct ops` may hold function pointers, found by a review)
+  or that are volatile. The cost: read-only structure tables use the 64 KB a6 window instead of
+  the code area. A read-only variable placed in data for a reason its type doesn't show (an
+  address in an integer, a common symbol) is a6-relative in its own translation unit, and GCC
+  warns, since others can't know
 - libgcc's soft-float routines reached `_fpCCR` through the GOT (below, §12); now relative to a6,
   with `-ma6rel` defining `__A6REL__`
 - **libsupc++** (built with the flag) calls `_Unwind_*` through the declarations in `unwind.h`,
@@ -901,8 +913,8 @@ Mixed-format ELF links would also stay fragile. Instead:
       same, for identical modules
     - `l68 -a` redirects far `bsr.w` and `lea`, but not `bra.w`, which GCC uses for tail calls
       with `-mbsrw`: large programs for `l68` need no `-mbsrw` or `-fno-optimize-sibling-calls`
-    - libgcc's soft-float members use GOT relocations (the `_fpCCR` issue, §12); `elf2rof -k`
-      skips them
+    - libgcc's soft-float members used GOT relocations (the `_fpCCR` issue, since fixed, §4);
+      `elf2rof -k` skips archive members it can't convert
 - **Specification:** the Assembler/Linker manual, plus `roff.c` for real-world details.
 - **Location:** both live in a fork of `elf2mod` (`cdifan/elf2mod`), next to `elf2mod` itself. All
   three tools handle OS-9 module headers, CRCs and ELF via libbfd, so they can share code, and they
@@ -1225,7 +1237,8 @@ bridge matters for running programs inside the emulator.
 
 ### Fork patches: authorship and license
 
-All fork commits in every submodule are authored and committed by Murachue (2021). The upstream
+Murachue's fork commits (2021) are his own, authored and committed by him; this table describes
+them. This work's commits are on the `-compat` branches (see "Branches" below). The upstream
 split points, fetched shallowly and tagged locally in each submodule:
 
 | Submodule | Upstream split | Fork changes |
@@ -1303,12 +1316,12 @@ Development happens in forks under [github.com/cdifan][cdifan]:
   `newlib-4.1.0-os9-compat`, with the os9call `setjmp`/`longjmp` (§4 "Libraries").
 - Other submodules (newlib, elf2mod, …) are forked when they need changes, and follow the same
   pattern: the upstream branch is kept, and the work branch gets a `-compat` suffix.
-- **`cdifan/elf2mod`** (to be forked from `murachue/elf2mod`, branch `main-compat`) will also hold
+- **`cdifan/elf2mod`** (forked from `murachue/elf2mod`, branch `main-compat`) also holds
   `rof2elf` and `elf2rof` (§6), and the `.stb` generation.
 
-Status: `cdifan/toolchaincdi` and `cdifan/gcc` exist, and Murachue's `11.1.0-os9` has been pushed
-to `cdifan/gcc`; `cdifan/elf2mod` is still to be forked. The
-`compat-dev` and `11.1.0-os9-compat` branches haven't been created yet.
+Status: all of these exist and are pushed: `cdifan/toolchaincdi` (`main`, `compat-dev`),
+`cdifan/gcc` (`11.1.0-os9`, `11.1.0-os9-compat` and the two fix branches),
+`cdifan/newlib-cygwin` and `cdifan/elf2mod`.
 
 ### Alternative (not chosen): human-written code with AI guidance
 
@@ -1418,8 +1431,10 @@ runs code.
 
 - **Harness:** a small host program built around the Musashi 68000 CPU emulator library
   (permissively licensed, included as a submodule). It loads a linked test image (ELF, no OS), sets
-  up a stack and a6 (for `-ma6rel` code), fills all other registers with marker values, calls a
-  function, and checks the results.
+  up a stack and a6 (for `-ma6rel` code), runs it from its entry point, and reports the exit
+  status the test writes to an I/O port. With `-m` it loads an OS-9 module as OS-9 does (header
+  parity and CRC checked). The assembly stubs below fill registers with marker values and check
+  them around calls.
 - **Microware side:** short hand-written GNU-syntax assembly stubs reproduce the exact call and
   return sequences of Microware C 3.2 (taken from `testos9c-cc32.a`), and for struct return those
   of Ultra C 2.5 (from `testos9c-ucc25.a`). They let the harness check:
@@ -1484,8 +1499,12 @@ the build, and tests don't belong in the image.
 test/
 ├── os9c/          the Microware C probe and its Microware C 3.2 / Ultra C 2.5 outputs
 ├── baseline/      Level 0: the corpus list and the compile-and-diff script
+├── dejagnu/       Level 1: the compile-only DejaGnu board (the tests are in the GCC tree)
 ├── l68cmp/        Level 3: elf2mod, rof2elf and elf2rof compared with Microware's linker
 └── abi-exec/      Level 2: emulator harness, assembly stubs and tests
+    ├── tests/     Level 2 tests, each with its assembly stubs
+    ├── modtests/  far calls through elf2mod's jump table (and l68's)
+    ├── nltests/   newlib, in both multilibs
     ├── mwtests/   Level 3 (partial): tests linked with Microware's converted C library
     └── musashi/   68000 emulator library (submodule)
 ```
@@ -1547,6 +1566,14 @@ test/
      more restores its FPU registers through a1 after restoring a1. OS-9 convention functions
      avoid it (FPU registers first, a1 last); interrupt handlers are left unchanged to keep code
      built without the flag identical
+   - **features without a run-time test** (an independent review): FPU register saves under
+     `-m68881`; `os9call` and `_OS9PROTO` declarations used without `-mos9call`; char, short,
+     float and pointer arguments from a Microware-style caller; odd-sized structs of 2, 5, 6
+     and 7 bytes (1 and 3 are tested); `long double` and `_Complex` on the stack and returned
+     via a0; struct return through a function pointer; `main` receiving argc/argv in d0/d1; the
+     `-mos9stkchk` overflow path (it and `-mbuiltin=os9call` only run with Microware's
+     libraries); the exclusion of interrupt handlers; d2-d7/a2-a5 after `longjmp`; the
+     68881 `setjmp`/`longjmp` variants (there's no FPU multilib). CI runs no tests.
 
 ## 13. References
 

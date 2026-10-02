@@ -1,8 +1,10 @@
 | Level 2, register preservation: call GCC -mos9call functions the way
 | Microware C 3.2 code does and check that every register except d0
-| (and d1 when it carries an argument or the return value) survives.
-| Microware C 3.2 callers rely on d1, a0, a1 and d2-d7 surviving calls
-| (testos9c-cc32.a, tests 35, 36, 40-47).
+| (and d1 when it carries an argument or the return value) survives, a6
+| and sp included.  Microware C 3.2 callers rely on d1 and d2-d7 surviving
+| calls, Ultra C 2.5 callers on a0/a1 too, and the manual says every
+| register but argument and return registers is preserved
+| (testos9c-cc32.a and -ucc25.a, tests 35, 36, 40-47).
 
 	.text
 
@@ -12,7 +14,7 @@
 | mwcall itself preserves a0 and a1, as an OS-9 convention function must:
 | its GCC callers keep values there.
 | Returns a mask of the registers that changed (bit 0 = d1, 1-6 =
-| d2-d7, 7-12 = a0-a5); fn's result is left in mw_result/mw_result2.
+| d2-d7, 7-12 = a0-a5, 13 = a6 or sp); fn's result is left in mw_result/mw_result2.
 | Called from GCC -mos9call code: fn in d0, a in d1, b at 4(sp), flags
 | at 8(sp).
 
@@ -21,6 +23,7 @@ mwcall:
 	movem.l	%d2-%d7/%a0-%a5,-(%sp)	| 48 bytes: b at 52(sp), flags at 56(sp)
 	move.l	%d0,mw_target(%a6)
 	move.l	56(%sp),mw_flags(%a6)
+	clr.b	mw_a6bad(%a6)
 	move.l	%d1,%d0			| a
 	move.l	52(%sp),%d1		| b
 	move.l	#0xD2D2D2D2,%d2
@@ -38,10 +41,16 @@ mwcall:
 	btst	#0,mw_flags+3(%a6)
 	beq.s	1f
 	move.l	#0xD1D1D1D1,%d1
-1:	pea	2f(%pc)			| return address
+1:	move.l	%a6,-(%sp)		| a6 (and sp) must survive: checked below
+	pea	2f(%pc)			| return address
 	move.l	mw_target(%a6),-(%sp)
 	rts				| "call" fn without using a register
-2:	move.l	%d0,mw_result(%a6)
+2:	cmp.l	(%sp),%a6
+	beq.s	5f
+	move.l	(%sp),%a6		| restored, to record the results
+	st	mw_a6bad(%a6)
+5:	addq.l	#4,%sp
+	move.l	%d0,mw_result(%a6)
 	move.l	%d1,mw_result2(%a6)
 	movem.l	%d1-%d7/%a0-%a5,mw_regs(%a6)
 	lea	mw_regs(%a6),%a0
@@ -59,6 +68,10 @@ mwcall:
 4:	addq.l	#1,%d1
 	cmp.l	#13,%d1
 	bne.s	3b
+	tst.b	mw_a6bad(%a6)
+	beq.s	6f
+	bset	#13,%d0
+6:
 	movem.l	(%sp)+,%d2-%d7/%a0-%a5
 	rts
 
@@ -84,3 +97,4 @@ mw_flags:	.skip	4
 mw_result:	.skip	4
 mw_result2:	.skip	4
 mw_regs:	.skip	13*4
+mw_a6bad:	.skip	2

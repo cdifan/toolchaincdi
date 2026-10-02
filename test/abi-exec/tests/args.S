@@ -60,20 +60,24 @@ mw_ll:
 
 	.globl	call_g_sub3		| g_sub3 (100, 20, 3)
 call_g_sub3:
+	move.l	%d1,-(%sp)		| d1 carries no argument or result: keep it
 	pea	3.w
 	moveq	#20,%d1
 	moveq	#100,%d0
 	jsr	g_sub3(%pc)
 	addq.l	#4,%sp
+	move.l	(%sp)+,%d1
 	rts
 
 	.globl	call_g_dhi		| g_dhi (1.5, 5)
 call_g_dhi:
+	move.l	%d1,-(%sp)		| d1 carries no argument or result: keep it
 	pea	5.w
 	move.l	#0x3FF80000,%d0
 	moveq	#0,%d1
 	jsr	g_dhi(%pc)
 	addq.l	#4,%sp
+	move.l	(%sp)+,%d1
 	rts
 
 	.globl	call_g_s1		| g_s1 ((struct s1) { 7 }, 100)

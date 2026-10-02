@@ -20,9 +20,11 @@ GCC     ?= $(GB)/gcc/xgcc -B$(GB)/gcc/
 TPREFIX ?= m68k-elfos9-
 HOSTCC  ?= gcc
 CFLAGS_T = -O2 -mpcrel -ma6rel -mos9call
-# The compiler proper of the build tree, if there: objects are rebuilt when
-# it changes.
-CC1     := $(wildcard $(GB)/gcc/cc1)
+# The compiler proper of the build tree, when that's the compiler tested:
+# objects are rebuilt when it changes (also when libgcc or a test's
+# .flags file change).
+.SECONDEXPANSION:
+CC1     := $(if $(filter $(GB)/gcc/xgcc,$(firstword $(GCC))),$(wildcard $(GB)/gcc/cc1))
 ABIRUN_FLAGS =
 MUSASHI  = $(HERE)musashi
 TESTS    = $(basename $(notdir $(wildcard $(HERE)tests/*.c)))
@@ -50,7 +52,8 @@ $(BUILD)/abirun: $(HERE)harness.c $(BUILD)/m/m68kops.c
 # Test images: crt0, support (memcpy, memset), the test's C file and
 # its assembly stubs (tests/NAME.S).
 # tests/NAME.flags, if present, replaces the compiler flags.
-$(BUILD)/%.elf: $(HERE)tests/%.c $(HERE)tests/%.S $(HERE)crt0.S $(HERE)support.S $(HERE)abi.lds $(CC1)
+$(BUILD)/%.elf: $(HERE)tests/%.c $(HERE)tests/%.S $(HERE)crt0.S $(HERE)support.S $(HERE)abi.lds $(CC1) \
+	$$(wildcard $(HERE)tests/$$*.flags) $$(LIBGCC)
 	mkdir -p $(BUILD)
 	$(GCC) -c $(or $(file <$(HERE)tests/$*.flags),$(CFLAGS_T)) -o $(BUILD)/$*.o $(HERE)tests/$*.c
 	$(TPREFIX)as -m68000 --pcrel -o $(BUILD)/$*-stubs.o $(HERE)tests/$*.S
@@ -102,7 +105,8 @@ $(BUILD)/mw/cstart.o $(BUILD)/mw/clib.a: $(BUILD)/rof2elf
 $(BUILD)/mw/cstart-sub.o: $(BUILD)/mw/cstart.o
 	$(TPREFIX)objcopy -w --strip-symbol='__os9_*' $< $@
 
-$(BUILD)/mw/%.elf: $(HERE)mwtests/%.c $(HERE)crt0.S $(HERE)abi.lds $(CC1) $(BUILD)/mw/cstart-sub.o $(BUILD)/mw/clib.a
+$(BUILD)/mw/%.elf: $(HERE)mwtests/%.c $(HERE)crt0.S $(HERE)abi.lds $(CC1) $(BUILD)/mw/cstart-sub.o $(BUILD)/mw/clib.a \
+	$$(wildcard $(HERE)mwtests/$$*.flags) $$(LIBGCC)
 	$(GCC) -c $(or $(file <$(HERE)mwtests/$*.flags),$(CFLAGS_MW)) -o $(BUILD)/mw/$*.o $<
 	$(TPREFIX)as -m68000 --pcrel -o $(BUILD)/mw/crt0.o $(HERE)crt0.S
 	$(TPREFIX)ld --no-check-sections -T $(HERE)abi.lds -o $@ $(BUILD)/mw/crt0.o $(BUILD)/mw/$*.o \
@@ -136,7 +140,8 @@ $(BUILD)/%.mod: $(BUILD)/%.elf $(BUILD)/elf2mod
 	  $(BUILD)/crt0.o $(BUILD)/$*.o $(BUILD)/$*-stubs.o $(BUILD)/support.o $(LIBGCC)
 	$(BUILD)/elf2mod -g $(BUILD)/$*.qelf $@ > /dev/null
 
-$(BUILD)/far/%.mod: $(HERE)modtests/%.c $(HERE)modtests/%.S $(HERE)crt0.S $(HERE)support.S $(HERE)abi.lds $(CC1) $(BUILD)/elf2mod
+$(BUILD)/far/%.mod: $(HERE)modtests/%.c $(HERE)modtests/%.S $(HERE)crt0.S $(HERE)support.S $(HERE)abi.lds $(CC1) $(BUILD)/elf2mod \
+	$$(LIBGCC)
 	mkdir -p $(BUILD)/far
 	$(GCC) -c $(CFLAGS_T) $(FARFLAGS) -o $(BUILD)/far/$*.o $<
 	$(TPREFIX)as -m68000 --pcrel -o $(BUILD)/far/$*-stubs.o $(HERE)modtests/$*.S
@@ -172,13 +177,16 @@ CONV     =
 # compiler picks the multilib directory.
 NEWLIB  ?= $(HOME)/build/install/m68k-elfos9
 
-$(BUILD)/%.nlmod: $(HERE)nltests/%.c $(HERE)crt0.S $(HERE)abi.lds $(CC1) $(BUILD)/elf2mod
+NLLIBC   = $(NEWLIB)/lib/$(shell $(GCC) $(CONV) -print-multi-directory)/libc.a
+
+$(BUILD)/%.nlmod: $(HERE)nltests/%.c $(HERE)crt0.S $(HERE)abi.lds $(CC1) $(BUILD)/elf2mod \
+	$$(NLLIBC) $$(LIBGCC)
 	mkdir -p $(BUILD)
 	$(GCC) -c -O2 -mpcrel -ma6rel $(CONV) -isystem $(NEWLIB)/include -o $(BUILD)/$*.o $<
 	$(TPREFIX)as -m68000 --pcrel -o $(BUILD)/crt0.o $(HERE)crt0.S
 	$(TPREFIX)ld -q --noinhibit-exec --no-check-sections --defsym __jmptbl_size=$(NLJMPTBL) \
 	  -T $(HERE)abi.lds -o $(BUILD)/$*.nlelf $(BUILD)/crt0.o $(BUILD)/$*.o \
-	  $(NEWLIB)/lib/$$($(GCC) $(CONV) -print-multi-directory)/libc.a \
+	  $(NLLIBC) \
 	  $$($(GCC) $(CONV) -print-libgcc-file-name) 2> $(BUILD)/$*.ld.log
 	$(BUILD)/elf2mod $(BUILD)/$*.nlelf $@
 
@@ -197,10 +205,9 @@ check-newlib:
 # src/elf2mod), linked with l68 and run as OS-9 modules; modtests/ with
 # l68 -a, which builds l68's own jump table.  l68 -a only redirects bsr.w
 # and lea (unlike elf2mod, it doesn't redirect bra.w, which -mbsrw uses
-# for tail calls), so modtests/ are compiled without tail calls here.
-# libgcc is converted with -k:
-# its soft-float members use GOT relocations, which elf2rof (like elf2mod)
-# can't handle.  l68 is proprietary and not included; Ultra C's Windows
+# for tail calls), so modtests/ are compiled without tail calls here.  The
+# whole of libgcc converts (its soft-float routines no longer use a GOT).
+# l68 is proprietary and not included; Ultra C's Windows
 # l68.exe runs from WSL:
 #   make check-l68 L68=/mnt/c/path/to/DOS/BIN/l68.exe [MWLIB=/path/to/LIB]
 L68 ?=
@@ -209,8 +216,8 @@ $(BUILD)/elf2rof: $(HERE)../../src/elf2mod/elf2rof.c
 	mkdir -p $(BUILD)
 	$(HOSTCC) -O2 -o $@ $<
 
-$(BUILD)/libgcc.l: $(BUILD)/elf2rof
-	$(BUILD)/elf2rof -k -o $@ $(LIBGCC) 2> $(BUILD)/libgcc.log
+$(BUILD)/libgcc.l: $(BUILD)/elf2rof $$(LIBGCC)
+	$(BUILD)/elf2rof -o $@ $(LIBGCC)
 
 l68link = cd $(1) && for f in $(2); do ./$(3)elf2rof -o $$f.r $$f.o || exit 1; done && \
 	  $(L68) $(4) -n=$(5) -o=$(5).lmod $(2:%=%.r) -l=$(3)libgcc.l > $(5).l68.log

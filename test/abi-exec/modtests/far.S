@@ -7,8 +7,8 @@
 | f on the stack).
 use_ptr:
 	add.l	%d1,%d0
-	move.l	4(%sp),%a0
-	jmp	(%a0)
+	move.l	4(%sp),-(%sp)		| jump to f without a0, which callers
+	rts				| keep across OS-9 convention calls
 
 	.space	40000
 
