@@ -1,0 +1,9 @@
+# Compile-only DejaGnu board for m68k-elfos9: no simulator, so execution tests
+# are reported as failures or unsupported; compile tests (dg-do compile) work.
+load_generic_config "sim"
+process_multilib_options ""
+set_board_info compiler "[find_gcc]"
+set_board_info cflags ""
+set_board_info ldflags ""
+set_board_info sim /bin/false
+set_board_info is_simulator 1

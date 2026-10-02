@@ -1,0 +1,24 @@
+# Level 0 corpus: name | source | preprocessor flags [| extra compiler flags]
+# Variables: $REPO (this repository), $SRC (source trees: gcc, newlib-cygwin),
+# $GB (GCC build directory), $NB (newlib build directory).
+testos9c   | $REPO/test/os9c/testos9c.c | -w
+stkchk     | $REPO/test/os9c/stkchk.c   | -w
+# newlib (flags as in its build)
+vfprintf   | $SRC/newlib-cygwin/newlib/libc/stdio/vfprintf.c  | $NL -I$SRC/newlib-cygwin/newlib/libc/stdio
+vfscanf    | $SRC/newlib-cygwin/newlib/libc/stdio/vfscanf.c   | $NL -I$SRC/newlib-cygwin/newlib/libc/stdio
+qsort      | $SRC/newlib-cygwin/newlib/libc/search/qsort.c    | $NL
+strtol     | $SRC/newlib-cygwin/newlib/libc/stdlib/strtol.c   | $NL
+dtoa       | $SRC/newlib-cygwin/newlib/libc/stdlib/dtoa.c     | $NL
+mallocr    | $SRC/newlib-cygwin/newlib/libc/stdlib/mallocr.c  | $NL -DINTERNAL_NEWLIB -DDEFINE_MALLOC
+memmove    | $SRC/newlib-cygwin/newlib/libc/string/memmove.c  | $NL
+strlen     | $SRC/newlib-cygwin/newlib/libc/string/strlen.c   | $NL
+strftime   | $SRC/newlib-cygwin/newlib/libc/time/strftime.c   | $NL
+e_pow      | $SRC/newlib-cygwin/newlib/libm/math/e_pow.c      | $NL -I$SRC/newlib-cygwin/newlib/libm/common
+sf_sin     | $SRC/newlib-cygwin/newlib/libm/math/sf_sin.c     | $NL -I$SRC/newlib-cygwin/newlib/libm/common
+# libgcc (flags as in its build)
+muldi3     | $SRC/gcc/libgcc/libgcc2.c       | $LG -DL_muldi3
+udivmoddi4 | $SRC/gcc/libgcc/libgcc2.c       | $LG -DL_udivmoddi4
+divdi3     | $SRC/gcc/libgcc/libgcc2.c       | $LG -DL_divdi3
+fixdfdi    | $SRC/gcc/libgcc/libgcc2.c       | $LG -DL_fixdfdi
+unwind-dw2 | $SRC/gcc/libgcc/unwind-dw2.c    | $LG | -fexceptions
+emutls     | $SRC/gcc/libgcc/emutls.c        | $LG

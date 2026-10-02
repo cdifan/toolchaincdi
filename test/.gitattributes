@@ -1,0 +1,4 @@
+# Scripts and data used inside WSL/Linux must keep LF line endings.
+*.sh  text eol=lf
+*.exp text eol=lf
+*.txt text eol=lf

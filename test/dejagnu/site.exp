@@ -1,0 +1,3 @@
+# DejaGnu site file: makes the boards in this directory available.
+# Use with: DEJAGNU=<this file> make check-gcc RUNTESTFLAGS="--target_board=os9-compile ..."
+lappend boards_dir [file dirname [info script]]
