@@ -1527,6 +1527,12 @@ test/
        so a thin wrapper (compile, link, `elf2mod`) or a Makefile fragment
      - a recipe or script for converting one's own copy of Microware's libraries (`rof2elf`,
        `ranlib`), which can't be shipped
+   - **a pragma for Microware declarations:** `#pragma os9call push` / `#pragma os9call pop`, giving
+     every function declared in between the `os9call` attribute (through `m68k_insert_attributes`,
+     as rs6000 does with `#pragma longcall`). Backend only, for C and C++ alike. It doesn't replace
+     `_OS9PROTO` in headers shared with Microware C 3.2, which needs the macro to hide the
+     prototypes anyway; it's for prototyped headers only GCC reads (Ultra C's ANSI headers, one's
+     own), which can then be wrapped whole, around an `#include`, without editing each declaration
    - porting the fork to GCC 17 (§2)
    - enabling C++ in the toolchain build (`--enable-languages=c,c++`); the C++ parts of
      implementation phase 1 (mangling) and the C++ Level 1 tests apply once it's enabled
