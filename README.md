@@ -6,8 +6,8 @@ This is a fork of [murachue/toolchaincdi](https://github.com/murachue/toolchainc
 everything Murachue built kept as-is. It adds work on interoperating with Microware OS-9 C
 compilers and libraries:
 - an `-mos9call` option for the Microware C calling convention
-- an opt-in `-mos9stkchk` option for Microware C 3.2-compatible stack checking
-- `rof2elf`/`elf2rof` converters for Microware ROF object files
+- a planned, opt-in `-mos9stkchk` option for Microware C 3.2-compatible stack checking
+- `rof2elf` and (planned) `elf2rof` converters for Microware ROF object files
 
 See [OS9-COMPAT-DESIGN.md](OS9-COMPAT-DESIGN.md) for the design and current status.
 [`test/os9c/`](test/os9c/) holds two Microware C probes, for the calling convention and for stack
@@ -15,7 +15,9 @@ checking.
 
 GCC now comes from [cdifan/gcc](https://github.com/cdifan/gcc), a fork of
 [gcc-mirror/gcc](https://github.com/gcc-mirror/gcc). Its `11.1.0-os9` branch is Murachue's work,
-unchanged. The other submodules still point at Murachue's repositories.
+unchanged. elf2mod comes from [cdifan/elf2mod](https://github.com/cdifan/elf2mod)
+(branch `main-compat`), which adds `rof2elf`. The other submodules still point at Murachue's
+repositories.
 
 # Ingredients
 
@@ -31,7 +33,10 @@ unchanged. The other submodules still point at Murachue's repositories.
         - you must implement OS-9 syscall if you want, with `_` prefix
 - elf2mod
     - converts specially-crafted ELF into OS-9/68000 executable (module) file
-    - [consult elf2mod README for more details](https://github.com/murachue/elf2mod/blob/main/README.md)
+    - [see elf2mod.md in the elf2mod fork](https://github.com/cdifan/elf2mod/blob/main-compat/elf2mod.md)
+- rof2elf
+    - converts Microware ROF objects (`.r`) and libraries (`.l`) into ELF, for linking with Microware's libraries
+    - [see rof2elf.md in the elf2mod fork](https://github.com/cdifan/elf2mod/blob/main-compat/rof2elf.md)
 - psximager
     - psxbuild with CD-BRIDGE is your friend
     - no ability to make native CD-i image

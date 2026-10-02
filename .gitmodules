@@ -16,8 +16,8 @@
 	branch = cdi
 [submodule "elf2mod"]
 	path = src/elf2mod
-	url = https://github.com/murachue/elf2mod.git
-	branch = main
+	url = https://github.com/cdifan/elf2mod.git
+	branch = main-compat
 [submodule "test/abi-exec/musashi"]
 	path = test/abi-exec/musashi
 	url = https://github.com/kstenerud/Musashi.git
