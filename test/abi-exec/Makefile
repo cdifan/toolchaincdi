@@ -6,6 +6,8 @@
 #                        -m68020 -m68881 on an emulated 68040
 #   make check-mw MWLIB=DIR  also link with Microware's C library (see below)
 #   make check-mod       run the tests as OS-9 modules made by elf2mod (see below)
+#   make check-l68 L68=...  run them as modules linked by Microware's l68,
+#                        through elf2rof (see below)
 #   make GCC=...         compiler driver to test
 #   make BUILD=...       build directory (default ~/build/abi-exec)
 
@@ -102,9 +104,10 @@ check-mw: $(BUILD)/abirun $(MWTESTS:%=$(BUILD)/mw/%.elf)
 # Modules: the tests linked with -q, converted by elf2mod (from
 # src/elf2mod, with the BFD library under BFDPATH) and run as OS-9 modules
 # (abirun -m, which checks the header parity and CRC like OS-9; the .stb
-# symbol modules from elf2mod -g are checked with abirun -v); plus modtests/, whose far calls go through elf2mod's
-# _jmptbl (linked with --noinhibit-exec, which keeps the output despite
-# the truncated relocations).
+# symbol modules from elf2mod -g are checked with abirun -v); plus
+# modtests/, whose far calls go through elf2mod's _jmptbl (linked with
+# --noinhibit-exec, which keeps the output despite the truncated
+# relocations).
 #   make check-mod
 BFDPATH  ?= $(HOME)/build/install/x86_64-pc-linux-gnu/m68k-elfos9
 JMPTBL    = 60
@@ -123,7 +126,7 @@ $(BUILD)/%.mod: $(BUILD)/%.elf $(BUILD)/elf2mod
 
 $(BUILD)/far/%.mod: $(HERE)modtests/%.c $(HERE)modtests/%.S $(HERE)crt0.S $(HERE)support.S $(HERE)abi.lds $(BUILD)/elf2mod
 	mkdir -p $(BUILD)/far
-	$(GCC) -c $(CFLAGS_T) -o $(BUILD)/far/$*.o $<
+	$(GCC) -c $(CFLAGS_T) $(FARFLAGS) -o $(BUILD)/far/$*.o $<
 	$(TPREFIX)as -m68000 --pcrel -o $(BUILD)/far/$*-stubs.o $(HERE)modtests/$*.S
 	$(TPREFIX)as -m68000 --pcrel -o $(BUILD)/far/crt0.o $(HERE)crt0.S
 	$(TPREFIX)as -m68000 --pcrel -o $(BUILD)/far/support.o $(HERE)support.S
@@ -144,8 +147,49 @@ check-mod:
 	  $(MAKE) --no-print-directory BUILD=$(BUILD)/mod-$$o \
 	    CFLAGS_T="$$(echo -$$o | sed 's/bsrw/ -mbsrw/') -mpcrel -ma6rel -mos9call" run-mod || exit 1; done
 
+# Microware's linker: the same objects converted by elf2rof (from
+# src/elf2mod), linked with l68 and run as OS-9 modules; modtests/ with
+# l68 -a, which builds l68's own jump table.  l68 -a only redirects bsr.w
+# and lea (unlike elf2mod, it doesn't redirect bra.w, which -mbsrw uses
+# for tail calls), so modtests/ are compiled without tail calls here.
+# libgcc is converted with -k:
+# its soft-float members use GOT relocations, which elf2rof (like elf2mod)
+# can't handle.  l68 is proprietary and not included; Ultra C's Windows
+# l68.exe runs from WSL:
+#   make check-l68 L68=/mnt/c/path/to/DOS/BIN/l68.exe
+L68 ?=
+
+$(BUILD)/elf2rof: $(HERE)../../src/elf2mod/elf2rof.c
+	mkdir -p $(BUILD)
+	$(HOSTCC) -O2 -o $@ $<
+
+$(BUILD)/libgcc.l: $(BUILD)/elf2rof
+	$(BUILD)/elf2rof -k -o $@ $(LIBGCC) 2> $(BUILD)/libgcc.log
+
+l68link = cd $(1) && for f in $(2); do ./$(3)elf2rof -o $$f.r $$f.o || exit 1; done && \
+	  $(L68) $(4) -n=$(5) -o=$(5).lmod $(2:%=%.r) -l=$(3)libgcc.l > $(5).l68.log
+
+$(BUILD)/%.lmod: $(BUILD)/%.elf $(BUILD)/elf2rof $(BUILD)/libgcc.l
+	@[ -n "$(L68)" ] || { echo "check-l68: set L68 to Microware's l68"; exit 2; }
+	$(call l68link,$(BUILD),crt0 $* $*-stubs support,,,$*)
+
+$(BUILD)/far/%.lmod: $(BUILD)/far/%.mod $(BUILD)/elf2rof $(BUILD)/libgcc.l
+	@[ -n "$(L68)" ] || { echo "check-l68: set L68 to Microware's l68"; exit 2; }
+	$(call l68link,$(BUILD)/far,crt0 $* $*-stubs support,../,-a,$*)
+
+run-l68: $(BUILD)/abirun $(TESTS:%=$(BUILD)/%.lmod) $(MODTESTS:%=$(BUILD)/far/%.lmod)
+	@fail=0; for t in $(TESTS:%=$(BUILD)/%.lmod) $(MODTESTS:%=$(BUILD)/far/%.lmod); do \
+	  if $(BUILD)/abirun $(ABIRUN_FLAGS) -m $$t; then echo "PASS: $$(basename $$t)"; \
+	  else echo "FAIL: $$(basename $$t)"; fail=1; fi; done; exit $$fail
+
+check-l68:
+	@for o in O2 O2bsrw; do echo "== l68, -$$o"; \
+	  $(MAKE) --no-print-directory BUILD=$(BUILD)/l68-$$o \
+	    FARFLAGS=-fno-optimize-sibling-calls \
+	    CFLAGS_T="$$(echo -$$o | sed 's/bsrw/ -mbsrw/') -mpcrel -ma6rel -mos9call" run-l68 || exit 1; done
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all run run-mod check check-mw check-mod clean
+.PHONY: all run run-mod run-l68 check check-mw check-mod check-l68 clean
 .SECONDARY:

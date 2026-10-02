@@ -10,4 +10,7 @@ if exist stb\prog.stb del stb\prog.stb
 xcc -r -s prog.c
 l68 -g -m -n=prog -o=prog %CLIB%\cstart.r prog.r -l=%CLIB%\clib.l -l=%CLIB%\sys.l >prog.map
 if exist stb\prog.stb copy stb\prog.stb prog.stb >nul
+rem The round trip (run.sh copies these ROFs here): link them too.
+if exist prog2 del prog2
+if exist clib2.l l68 -n=prog -o=prog2 cstart2.r prog2.r -l=clib2.l -l=%CLIB%\sys.l
 dir prog*

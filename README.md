@@ -7,7 +7,7 @@ everything Murachue built kept as-is. It adds work on interoperating with Microw
 compilers and libraries:
 - an `-mos9call` option for the Microware C calling convention
 - an opt-in `-mos9stkchk` option for Microware C 3.2-compatible stack checking
-- `rof2elf` and (planned) `elf2rof` converters for Microware ROF object files
+- `rof2elf` and `elf2rof` converters for Microware ROF object files
 
 See [OS9-COMPAT-DESIGN.md](OS9-COMPAT-DESIGN.md) for the design and current status.
 [`test/os9c/`](test/os9c/) holds two Microware C probes, for the calling convention and for stack
@@ -16,7 +16,7 @@ checking.
 GCC now comes from [cdifan/gcc](https://github.com/cdifan/gcc), a fork of
 [gcc-mirror/gcc](https://github.com/gcc-mirror/gcc). Its `11.1.0-os9` branch is Murachue's work,
 unchanged. elf2mod comes from [cdifan/elf2mod](https://github.com/cdifan/elf2mod)
-(branch `main-compat`), which adds `rof2elf`. The other submodules still point at Murachue's
+(branch `main-compat`), which adds `rof2elf` and `elf2rof`. The other submodules still point at Murachue's
 repositories.
 
 # Ingredients
@@ -37,6 +37,9 @@ repositories.
 - rof2elf
     - converts Microware ROF objects (`.r`) and libraries (`.l`) into ELF, for linking with Microware's libraries
     - [see rof2elf.md in the elf2mod fork](https://github.com/cdifan/elf2mod/blob/main-compat/rof2elf.md)
+- elf2rof
+    - converts ELF objects and archives into ROF objects (`.r`) and libraries (`.l`), for linking GCC code with Microware's linker `l68`
+    - [see elf2rof.md in the elf2mod fork](https://github.com/cdifan/elf2mod/blob/main-compat/elf2rof.md)
 - psximager
     - psxbuild with CD-BRIDGE is your friend
     - no ability to make native CD-i image

@@ -7,8 +7,8 @@ Design notes and plans for extending this toolchain (`m68k-elfos9`, the GCC/binu
 fork used for CD-i and OS-9/68000 development) so that GCC-built code can interoperate with code
 and libraries built by Microware's own compilers.
 
-Status: **planning**. Apart from the Microware test probe in [`test/os9c/`](test/os9c/), nothing
-described here has been implemented yet.
+Status: **implementation**. Most of what's described here is implemented and tested; section 12
+lists what's done and what's still open.
 
 Contents:
 
@@ -853,6 +853,24 @@ Mixed-format ELF links would also stay fragile. Instead:
   (`%.o: %.r`). A wrapper or GCC driver spec could hide the step later. Estimated 600–900 lines.
 - **`elf2rof`** (later): reads an ELF `.o` (or a `ld -r` result) and writes ROF for `l68`.
   Similar size.
+  - **As implemented** (`elf2rof.md` in `cdifan/elf2mod`): reads ELF relocatables and `ar`
+    archives directly (no libbfd, like `rof2elf`) and writes ROF edition 9, one psect per object;
+    an archive becomes a `.l` library. Read-only sections become code, PC-relative references
+    within the code and references to absolute symbols are resolved, PLT relocations are
+    PC-relative, and the `__os9_*` symbols give a mainline's header. Comparing with `l68`
+    showed what the manual doesn't say:
+    - every ROF ends with 16 zero bytes, which `rdump` and `l68` skip; a library without them
+      is misread
+    - `l68` doesn't compute 4-byte relative references; Microware's assemblers write an external
+      reference plus a negated reference to the psect's code instead, and so does `elf2rof`
+    - the assemblers sort definitions and external references by name and write local
+      references in descending order; `l68` pulls library members in the order of the external
+      references and builds the initialized data references in reverse, so `elf2rof` does the
+      same, for identical modules
+    - `l68 -a` redirects far `bsr.w` and `lea`, but not `bra.w`, which GCC uses for tail calls
+      with `-mbsrw`: large programs for `l68` need no `-mbsrw` or `-fno-optimize-sibling-calls`
+    - libgcc's soft-float members use GOT relocations (the `_fpCCR` issue, §12); `elf2rof -k`
+      skips them
 - **Specification:** the Assembler/Linker manual, plus `roff.c` for real-world details.
 - **Location:** both live in a fork of `elf2mod` (`cdifan/elf2mod`), next to `elf2mod` itself. All
   three tools handle OS-9 module headers, CRCs and ELF via libbfd, so they can share code, and they
@@ -1393,8 +1411,12 @@ bridge (§9) for automation.
   with `rof2elf`, GNU ld and `elf2mod`, and compares the program and `.stb` symbol modules (§6).
   `make check-mod` also checks every module's header parity and CRC, and its `.stb`, as OS-9
   does (`abirun -m`, `abirun -v`).
-- **`rof2elf`/`elf2rof` round trips:** convert ROF → ELF → ROF and compare with `rdump`. Convert
-  ELF → ROF and link with `l68`.
+- **`rof2elf`/`elf2rof` round trips:** `test/l68cmp/run.sh` converts `cstart.r`, `clib.l` and a
+  test program ROF → ELF → ROF; Ultra C's `l68` and Microware C 3.2's under vDos link the same
+  module from them as from the originals, byte for byte.
+- **GCC code linked by `l68`:** `make check-l68 L68=…` in `test/abi-exec` converts the Level 2
+  tests and libgcc with `elf2rof`, links them with `l68` (with `-a` for the far-call test) and runs
+  them as modules.
 
 ### Mapping to implementation phases
 
@@ -1416,7 +1438,7 @@ the build, and tests don't belong in the image.
 test/
 ├── os9c/          the Microware C probe and its Microware C 3.2 / Ultra C 2.5 outputs
 ├── baseline/      Level 0: the corpus list and the compile-and-diff script
-├── l68cmp/        Level 3: elf2mod and rof2elf compared with Microware's linker
+├── l68cmp/        Level 3: elf2mod, rof2elf and elf2rof compared with Microware's linker
 └── abi-exec/      Level 2: emulator harness, assembly stubs and tests
     ├── mwtests/   Level 3 (partial): tests linked with Microware's converted C library
     └── musashi/   68000 emulator library (submodule)
@@ -1444,7 +1466,8 @@ test/
    define `end`. `elf2mod` handles remote data and takes the module header from the `__os9_*`
    symbols. Level 3 runs partly (§11); Microware C 3.2's variadic functions were confirmed by
    running them (§4).
-5. **`elf2rof`**, then the deferred items:
+5. **`elf2rof`:** done, in `cdifan/elf2mod` (`elf2rof.md` there); tested by round trips and by
+   running GCC code linked with `l68` (§11). The deferred items:
    - porting the fork to GCC 17 (§2)
    - enabling C++ in the toolchain build (`--enable-languages=c,c++`); the C++ parts of
      implementation phase 1 (mangling) and the C++ Level 1 tests apply once it's enabled

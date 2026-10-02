@@ -4,7 +4,9 @@
 # with GNU ld in l68's order and converted with elf2mod -g.  The symbol
 # modules (.stb) must list the same symbols, and the program modules must
 # be the same up to the data relocation table (whose order differs; OS-9
-# doesn't mind, but the CRCs then differ).
+# doesn't mind, but the CRCs then differ).  And the round trip: the ROFs
+# converted with rof2elf and back with elf2rof must give l68 the same
+# module, byte for byte.
 #
 # Run from Git Bash on Windows, with WSL (Ubuntu) holding the toolchain.
 # Microware's tools and libraries are proprietary and not included.
@@ -47,13 +49,17 @@ owner=$(od -A n -t u2 --endian=big -j 8 -N 4 prog | awk '{print $1 "." $2}')
 wsl.exe -d Ubuntu --exec bash -c "set -e
   cd '$(wslpath "$work")'
   B=\$HOME/build/abi-exec
-  make -s -C '$(wslpath "$here/../abi-exec")' \$B/rof2elf \$B/elf2mod > /dev/null
+  make -s -C '$(wslpath "$here/../abi-exec")' \$B/rof2elf \$B/elf2mod \$B/elf2rof > /dev/null
   export PATH=\$HOME/build/install/bin:\$PATH
   for f in cstart.r prog.r clib.l; do \$B/rof2elf -e sys.l -o \${f%.?}.\${f##*.}o \$f; done
   mkdir mem; cd mem; m68k-elfos9-ar x ../clib.lo \$(cat ../members); cd ..
   m68k-elfos9-ld -q --no-check-sections -T '$(wslpath "$here/mod.lds")' \
     -o g.elf cstart.ro prog.ro \$(sed 's|^|mem/|' members)
-  \$B/elf2mod -n prog -u $owner $stb g.elf gprog > /dev/null"
+  \$B/elf2mod -n prog -u $owner $stb g.elf gprog > /dev/null
+  # The round trip: the ELF objects back to ROF.
+  \$B/elf2rof -o cstart2.r cstart.ro
+  \$B/elf2rof -o prog2.r prog.ro
+  \$B/elf2rof -o clib2.l clib.lo"
 
 perl "$here/stbdump.pl" prog.stb > mw.txt
 perl "$here/stbdump.pl" gprog.stb > g.txt
@@ -64,4 +70,19 @@ else echo "FAIL: symbol module (see $work/stb.diff)"; fail=1; fi
 irefs=$(od -A n -t u4 --endian=big -j 0x44 -N 4 prog | tr -d ' ')
 if cmp -n "$irefs" prog gprog; then echo "PASS: program module"
 else echo "FAIL: program module"; fail=1; fi
+# The round trip: l68 must link the same module from the ROFs that went
+# through rof2elf and elf2rof.  Under vDos, vdos.bat links them (prog2)
+# when they're there.
+if [ -z "$MWBUILT" ]; then
+  X l68.exe -n=prog -o=prog2 cstart2.r prog2.r -l=clib2.l -l=sys.l > l68rt.log 2>&1 || cat l68rt.log
+elif ls "$MWBUILT"/* | grep -qi "/prog2\$"; then
+  fetch "$MWBUILT" prog2 prog2
+else
+  cp cstart2.r prog2.r clib2.l "$MWBUILT"/
+  echo "round trip: run vdos.bat again in $MWBUILT, then this script"
+fi
+if [ -f prog2 ]; then
+  if cmp prog prog2; then echo "PASS: round trip (rof2elf, elf2rof)"
+  else echo "FAIL: round trip (rof2elf, elf2rof)"; fail=1; fi
+fi
 exit $fail
