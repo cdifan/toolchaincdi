@@ -1,0 +1,122 @@
+ psect stkchk_c,0,0,0,0,0
+ nam stkchk_c
+ vsect
+gx: ds.l 1
+ ends
+ ttl leaf
+leaf:  link a5,#0
+ movem.l #_1!1,-(sp)
+ move.l #_3,d0 :6
+ bsr _stkcheck
+ move.l (sp),d0 :2
+ addq.l #1,d0 :2
+ bra _4
+ nop :2
+_4
+ unlk a5
+ rts :2
+_3 equ 0xffffffc0 :0
+_1 equ 0x00000000 :0
+_2 equ 0x0000000c :0
+ ttl bigframe
+bigframe:  link a5,#0
+ movem.l #_5!1,-(sp)
+ move.l #_7,d0 :6
+ bsr _stkcheck
+ lea -4000(sp),sp
+ move.l 4000(sp),d0
+ lsl.l #2,d0 :2
+ lea (sp),a0 :2
+ move.l 4000(sp),0(a0,d0.l) :6
+ move.l 4000(sp),d1
+ lea (sp),a0 :2
+ move.l a0,d0 :2
+ bsr ext
+ lea 4000(sp),sp
+ bra _8
+ nop :2
+_8
+ movem.l -8(a5),#_5
+ unlk a5
+ rts :2
+_7 equ 0xfffff01c :0
+_5 equ 0x00000102 :0
+_6 equ 0x00000014 :0
+ ttl nonleaf
+nonleaf:  link a5,#0
+ movem.l #_9!1,-(sp)
+ move.l #_11,d0 :6
+ bsr _stkcheck
+ subq.l #4,sp :2
+ move.l 4(sp),d0
+ bsr ext
+ move.l d0,(sp) :2
+ move.l (sp),d0 :2
+ add.l gx(a6),d0
+ addq.l #4,sp :2
+ bra _12
+ nop :2
+_12
+ unlk a5
+ rts :2
+_11 equ 0xffffffb8 :0
+_9 equ 0x00000000 :0
+_10 equ 0x0000000c :0
+ ttl leaf2
+leaf2:  link a5,#0
+ movem.l #_13!3,-(sp)
+ move.l #_15,d0 :6
+ bsr _stkcheck
+ move.l 4(sp),d0
+ sub.l (sp),d0 :2
+ bra _16
+ nop :2
+_16
+ unlk a5
+ rts :2
+_15 equ 0xffffffc0 :0
+_13 equ 0x00000000 :0
+_14 equ 0x00000010 :0
+ ttl bigframe
+bigframe2:  link a5,#0
+ movem.l #_17!3,-(sp)
+ move.l #_19,d0 :6
+ bsr _stkcheck
+ lea -4000(sp),sp
+ move.l 4004(sp),d0
+ lsl.l #2,d0 :2
+ lea (sp),a0 :2
+ move.l 4000(sp),0(a0,d0.l) :6
+ move.l 4004(sp),d1
+ lea (sp),a0 :2
+ move.l a0,d0 :2
+ bsr ext
+ lea 4000(sp),sp
+ bra _20
+ nop :2
+_20
+ movem.l -4(a5),#_17
+ unlk a5
+ rts :2
+_19 equ 0xfffff01c :0
+_17 equ 0x00000100 :0
+_18 equ 0x00000014 :0
+ ttl leafd
+leafd:  link a5,#0
+ movem.l #_21!3,-(sp)
+ move.l #_23,d0 :6
+ bsr _stkcheck
+ moveq.l #0x00000000,d3 :2
+ move.l #0x3ff00000,d2 :6
+ movem.l (sp),d0/d1
+ bsr _T$DAdd
+ bra _24
+ nop :2
+_24
+ movem.l -8(a5),#_21
+ unlk a5
+ rts :2
+_23 equ 0xffffffc0 :0
+_21 equ 0x0000000c :0
+_22 equ 0x00000018 :0
+ ends

@@ -1,0 +1,95 @@
+* UCCao68k 68000 Family
+ psect stkchk.c,0,0,0,0,0
+ vsect
+=gx: ds.b 4
+ ends
+ spanreg d7
+ align 
+leaf:
+ move.l d7,-(sp)
+ subq.l #8,_stklimit(a6)
+ bcc.b =_$L0
+ bsr _stkhandler
+=_$L0
+ addq.l #1,d0
+ bra =_$L1
+bigframe:
+ link.w a5,#-4000
+ movem.l a0/d7/d1,-(sp)
+ sub.l #4020,_stklimit(a6)
+ bcc.b =_$L2
+ bsr _stkhandler
+=_$L2
+ move.l d0,d1
+ lsl.l #0x2,d0
+ lea -4000(a5),a0
+ move.l d1,0(a0,d0)
+ move.l a0,d0
+ bsr =ext
+=_$L3
+ add.l #4020,_stklimit(a6)
+ movem.l (sp)+,a0/d7/d1
+ unlk a5
+ rts 
+nonleaf:
+ move.l d7,-(sp)
+ sub.l #12,_stklimit(a6)
+ bcc.b =_$L4
+ bsr _stkhandler
+=_$L4
+ bsr =ext
+ add.l =gx(a6),d0
+=_$L5
+ add.l #12,_stklimit(a6)
+ move.l (sp)+,d7
+ rts 
+leaf2:
+ move.l d7,-(sp)
+ subq.l #8,_stklimit(a6)
+ bcc.b =_$L6
+ bsr _stkhandler
+=_$L6
+ sub.l d0,d1
+ move.l d1,d0
+=_$L1
+=_$L7
+ addq.l #8,_stklimit(a6)
+ move.l (sp)+,d7
+ rts 
+bigframe2:
+ link.w a5,#-4000
+ movem.l a0/d7,-(sp)
+ sub.l #4016,_stklimit(a6)
+ bcc.b =_$L8
+ bsr _stkhandler
+=_$L8
+ move.l d1,d7
+ lsl.l #0x2,d7
+ lea -4000(a5),a0
+ move.l d0,0(a0,d7)
+ move.l a0,d0
+ bsr =ext
+=_$L9
+ add.l #4016,_stklimit(a6)
+ movem.l (sp)+,a0/d7
+ unlk a5
+ rts 
+leafd:
+ fmovem.x fp1/fp0,-(sp)
+ move.l d7,-(sp)
+ sub.l #40,_stklimit(a6)
+ bcc.b =_$L10
+ bsr _stkhandler
+=_$L10
+ movem.l d0-d1,-(sp)
+ fmove.d (sp)+,fp0
+ fmovecr.x #0x32,fp1
+ fadd.x fp1,fp0
+ fmove.d fp0,-(sp)
+ movem.l (sp)+,d0-d1
+=_$L11
+ add.l #40,_stklimit(a6)
+ move.l (sp)+,d7
+ fmovem.x (sp)+,fp1/fp0
+ rts 
+ ends

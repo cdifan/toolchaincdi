@@ -1,0 +1,764 @@
+* UCCao68k 68000 Family
+ psect testos9c.c,0,0,0,0,0
+ vsect
+=gi: ds.b 4
+=gj: ds.b 4
+=godd1: ds.b 1
+=guc: ds.b 1
+=gc: ds.b 1
+ align 2
+=gf: ds.b 4
+=gk: ds.b 4
+=godd2: ds.b 2
+=gus: ds.b 2
+=gs: ds.b 2
+=godd3: ds.b 3
+ align 2
+=gbf: ds.b 4
+=gfnptr: ds.b 4
+=gr: ds.b 4
+=gq: ds.b 4
+=gp: ds.b 4
+=gg: ds.b 4
+=glong: ds.b 4
+=gm: ds.b 4
+=gl: ds.b 4
+=godd5: ds.b 5
+ align 2
+=gbig: ds.b 20
+=ga: ds.b 8
+=gb: ds.b 8
+=gpair: ds.b 8
+=godd7: ds.b 7
+ align 2
+=godd6: ds.b 6
+ ends
+ spanreg d7
+ align 
+call01_int_int:
+ movem.l d7/d1,-(sp)
+ move.l =gi(a6),d0
+ move.l =gj(a6),d1
+ bsr =x01_int_int
+=_$L0
+ movem.l (sp)+,d7/d1
+ rts 
+call02_int_int_int:
+ movem.l d7/d1,-(sp)
+ move.l =gk(a6),-(sp)
+ move.l =gi(a6),d0
+ move.l =gj(a6),d1
+ bsr =x02_int_int_int
+ bra _$3$_
+call03_five_ints:
+ movem.l d7/d1,-(sp)
+ move.l =gm(a6),-(sp)
+ move.l =gl(a6),-(sp)
+ move.l =gk(a6),-(sp)
+ move.l =gi(a6),d0
+ move.l =gj(a6),d1
+ bsr =x03_five_ints
+ bra _$1$_
+call04_int_dbl_int:
+ movem.l d7/d1,-(sp)
+ move.l =gj(a6),-(sp)
+ movem.l =ga(a6),d0-d1
+ movem.l d0-d1,-(sp)
+ move.l =gi(a6),d0
+ bsr =x04_int_dbl_int
+_$1$_
+ add.w #12,sp
+=_$L2
+=_$L3
+ movem.l (sp)+,d7/d1
+ rts 
+call05_dbl_int_int:
+ movem.l d7/d1,-(sp)
+ move.l =gj(a6),-(sp)
+ move.l =gi(a6),-(sp)
+ movem.l =ga(a6),d0-d1
+ bsr =x05_dbl_int_int
+ bra _$2$_
+call06_dbl_dbl:
+ movem.l d7/d1,-(sp)
+ movem.l =gb(a6),d0-d1
+ movem.l d0-d1,-(sp)
+ movem.l =ga(a6),d0-d1
+ bsr =x06_dbl_dbl
+ bra _$2$_
+call07_int_dbl:
+ movem.l d7/d1,-(sp)
+ movem.l =ga(a6),d0-d1
+ movem.l d0-d1,-(sp)
+ move.l =gi(a6),d0
+ bsr =x07_int_dbl
+_$2$_
+ addq.l #8,sp
+=_$L4
+=_$L5
+=_$L6
+ movem.l (sp)+,d7/d1
+ rts 
+call08_ptr_ptr_ptr:
+ movem.l d7/d1,-(sp)
+ move.l =gr(a6),-(sp)
+ move.l =gp(a6),d0
+ move.l =gq(a6),d1
+ bsr =x08_ptr_ptr_ptr
+_$3$_
+ addq.l #4,sp
+=_$L1
+=_$L7
+ movem.l (sp)+,d7/d1
+ rts 
+call09_chr_sht_uch_ush:
+ movem.l a0/d7/d1,-(sp)
+ moveq.l #0,d0
+ move.w =gus(a6),d0
+ move.l d0,-(sp)
+ moveq.l #0,d0
+ move.b =guc(a6),d0
+ move.l d0,-(sp)
+ move.b =gc(a6),d0
+ ext.w d0
+ ext.l d0
+ move.w =gs(a6),a0
+ move.l a0,d1
+ bsr =x09_chr_sht_uch_ush
+ addq.l #8,sp
+=_$L8
+ movem.l (sp)+,a0/d7/d1
+ rts 
+call10_flt_int:
+ fmove.x fp0,-(sp)
+ movem.l d7/d1,-(sp)
+ move.l =gi(a6),-(sp)
+ fmove.s =gf(a6),fp0
+ fmove.d fp0,-(sp)
+ movem.l (sp)+,d0-d1
+ bsr =x10_flt_int
+ addq.l #4,sp
+=_$L9
+ movem.l (sp)+,d7/d1
+ fmove.x (sp)+,fp0
+ rts 
+call11_int_flt:
+ fmove.x fp0,-(sp)
+ move.l d7,-(sp)
+ fmove.s =gf(a6),fp0
+ fmove.d fp0,-(sp)
+ move.l =gi(a6),d0
+ bsr =x11_int_flt
+ addq.l #8,sp
+ bra =_$L11
+call12_pair_int:
+ movem.l a1/a0/d7,-(sp)
+ move.l =gi(a6),-(sp)
+ lea =gpair(a6),a0
+ subq.l #8,sp
+ move.l sp,a1
+ move.l (a0)+,(a1)+
+ move.l (a0)+,(a1)+
+ bsr =x12_pair_int
+ bra _$4$_
+call13_int_pair_int:
+ movem.l a1/a0/d7,-(sp)
+ move.l =gj(a6),-(sp)
+ lea =gpair(a6),a0
+ subq.l #8,sp
+ move.l sp,a1
+ move.l (a0)+,(a1)+
+ move.l (a0)+,(a1)+
+ move.l =gi(a6),d0
+ bsr =x13_int_pair_int
+ bra _$4$_
+call14_big_int:
+ movem.l a1/a0/d7,-(sp)
+ move.l =gi(a6),-(sp)
+ lea =gbig(a6),a0
+ lea -20(sp),sp
+ move.l sp,a1
+ move.l (a0)+,(a1)+
+ move.l (a0)+,(a1)+
+ move.l (a0)+,(a1)+
+ move.l (a0)+,(a1)+
+ move.l (a0)+,(a1)+
+ bsr =x14_big_int
+ add.w #24,sp
+=_$L17
+ movem.l (sp)+,a1/a0/d7
+ rts 
+call15_int_int_pair:
+ movem.l a1/a0/d7/d1,-(sp)
+ lea =gpair(a6),a0
+ subq.l #8,sp
+ move.l sp,a1
+ move.l (a0)+,(a1)+
+ move.l (a0)+,(a1)+
+ move.l =gi(a6),d0
+ move.l =gj(a6),d1
+ bsr =x15_int_int_pair
+ addq.l #8,sp
+=_$L19
+ movem.l (sp)+,a1/a0/d7/d1
+ rts 
+call16_indirect:
+ movem.l a0/d7/d1,-(sp)
+ move.l =gk(a6),-(sp)
+ move.l =gi(a6),d0
+ move.l =gj(a6),d1
+ move.l =gfnptr(a6),a0
+ jsr (a0)
+ addq.l #4,sp
+=_$L21
+ movem.l (sp)+,a0/d7/d1
+ rts 
+call17_ret_char:
+ move.l d7,-(sp)
+ bsr =x17_ret_char
+ ext.w d0
+ ext.l d0
+ bra _$5$_
+call18_ret_short:
+ movem.l a0/d7,-(sp)
+ bsr =x18_ret_short
+ move.w d0,a0
+ addq.l #1,a0
+ move.l a0,d0
+=_$L23
+ movem.l (sp)+,a0/d7
+ rts 
+call19_ret_uchar:
+ movem.l d7/d1,-(sp)
+ bsr =x19_ret_uchar
+ moveq.l #0,d1
+ move.b d0,d1
+ addq.l #1,d1
+ move.l d1,d0
+=_$L24
+ movem.l (sp)+,d7/d1
+ rts 
+call20_ret_ptr:
+ movem.l a0/d7,-(sp)
+ bsr =x20_ret_ptr
+ move.l d0,a0
+ move.l (a0),d0
+=_$L25
+ movem.l (sp)+,a0/d7
+ rts 
+call21_ret_float:
+ move.l d7,-(sp)
+ bsr =x21_ret_float
+=_$L26
+ move.l (sp)+,d7
+ rts 
+call22_ret_double:
+ fmovem.x fp1/fp0,-(sp)
+ move.l d7,-(sp)
+ bsr =x22_ret_double
+ movem.l d0-d1,-(sp)
+ fmove.d (sp)+,fp0
+ fmovecr.x #0x32,fp1
+ fadd.x fp1,fp0
+ fmove.d fp0,-(sp)
+ movem.l (sp)+,d0-d1
+=_$L27
+ move.l (sp)+,d7
+ fmovem.x (sp)+,fp1/fp0
+ rts 
+call23_ret_long:
+ move.l d7,-(sp)
+ bsr =x23_ret_long
+_$5$_
+ addq.l #1,d0
+=_$L22
+=_$L28
+ move.l (sp)+,d7
+ rts 
+call24_ret_pair:
+ link.w a5,#-8
+ movem.l a0/d7,-(sp)
+ lea -8(a5),a0
+ bsr =x24_ret_pair
+ move.l -8+4(a5),d0
+=_$L29
+ movem.l (sp)+,a0/d7
+ unlk a5
+ rts 
+call25_ret_big:
+ link.w a5,#-20
+ movem.l a0/d7/d1,-(sp)
+ move.l =gj(a6),d1
+ lea -20(a5),a0
+ bsr =x25_ret_big
+ move.l -20+16(a5),d0
+=_$L30
+ movem.l (sp)+,a0/d7/d1
+ unlk a5
+ rts 
+def26_ret_pair:
+ link.w a5,#-8
+ movem.l a1/a0/d7,-(sp)
+ move.l d0,-8(a5)
+ move.l d1,-8+4(a5)
+ lea -8(a5),a1
+ move.l (a1)+,(a0)+
+ move.l (a1)+,(a0)+
+=_$L31
+ movem.l (sp)+,a1/a0/d7
+ unlk a5
+ rts 
+def27_ret_big:
+ movem.l a1/a0/d7,-(sp)
+ move.l d0,=gbig(a6)
+ lea =gbig(a6),a1
+ move.l (a1)+,(a0)+
+ move.l (a1)+,(a0)+
+ move.l (a1)+,(a0)+
+ move.l (a1)+,(a0)+
+ move.l (a1)+,(a0)+
+=_$L33
+ movem.l (sp)+,a1/a0/d7
+ rts 
+def28_ret_float:
+ fmove.x fp0,-(sp)
+ move.l d7,-(sp)
+ fmove.s =gf(a6),fp0
+ fmul.l d0,fp0
+ bra _$8$_
+call29_ret_float_to_float:
+ fmove.x fp0,-(sp)
+ movem.l d0/d1/d7,-(sp)
+ bsr =x21_ret_float
+ movem.l d0-d1,-(sp)
+ fmove.d (sp)+,fp0
+ fmove.s fp0,=gg(a6)
+=_$L37
+ movem.l (sp)+,d0/d1/d7
+ fmove.x (sp)+,fp0
+ rts 
+def30_int_dbl_int:
+ link.w a5,#0
+ fmove.x fp0,-(sp)
+ movem.l d7/d1,-(sp)
+ fmove.d 8(a5),fp0
+ move.l 16(a5),d1
+ move.l d0,=gi(a6)
+ fmove.d fp0,=ga(a6)
+ move.l d1,d0
+=_$L38
+ movem.l (sp)+,d7/d1
+ bra _$6$_
+def31_pair_int:
+ link.w a5,#0
+ move.l d7,-(sp)
+ move.l 16(a5),d0
+ add.l 8+4(a5),d0
+=_$L39
+ move.l (sp)+,d7
+ unlk a5
+ rts 
+def32_flt_int:
+ link.w a5,#0
+ fmove.x fp0,-(sp)
+ move.l d7,-(sp)
+ movem.l d0-d1,-(sp)
+ fmove.d (sp)+,fp0
+ move.l 8(a5),d0
+ fmove.s fp0,=gf(a6)
+=_$L40
+ move.l (sp)+,d7
+_$6$_
+ fmove.x (sp)+,fp0
+ unlk a5
+ rts 
+def33_chr_sht:
+ movem.l a0/d7,-(sp)
+ move.w d1,a0
+ ext.w d0
+ ext.l d0
+ add.l a0,d0
+=_$L41
+ movem.l (sp)+,a0/d7
+ rts 
+def34_ret_char:
+ move.l d7,-(sp)
+ add.b =gi+3(a6),d0
+=_$L42
+ move.l (sp)+,d7
+ rts 
+def35_uses_a0_a1:
+ movem.l a1/a0/d7,-(sp)
+ move.l d0,a0
+ move.l d1,a1
+ move.l (a0),d0
+ add.l 4(a1),d0
+ add.l 8(a0),d0
+ add.l 12(a1),d0
+=_$L43
+ movem.l (sp)+,a1/a0/d7
+ rts 
+def36_nonleaf:
+ movem.l a0/d7/d6,-(sp)
+ move.l d0,a0
+ move.l d1,d6
+ add.l (a0),d6
+ move.l 4(a0),d0
+ bsr =x01_int_int
+ add.l d0,d6
+ add.l 8(a0),d6
+ move.l d6,d0
+=_$L44
+ movem.l (sp)+,a0/d7/d6
+ rts 
+keep40_d0d1_across_void_noargs:
+ movem.l d7/d6,-(sp)
+ move.l d0,d6
+ bsr =x40_void_noargs
+ bra _$7$_
+keep41_d1_across_void_one_int:
+ movem.l d7/d6,-(sp)
+ move.l d0,d6
+ moveq.l #0x5,d0
+ bsr =x41_void_one_int
+_$7$_
+ add.l d1,d6
+ move.l d6,d0
+=_$L45
+=_$L46
+ movem.l (sp)+,d7/d6
+ rts 
+keep42_d1_across_ret_int:
+ movem.l d7/d6,-(sp)
+ move.l d0,d6
+ bsr =x42_ret_int_noargs
+ add.l d0,d6
+ add.l d6,d1
+ move.l d1,d0
+=_$L47
+ movem.l (sp)+,d7/d6
+ rts 
+def43_void_noargs_uses_d0d1:
+ movem.l d7/d6/d1/d0,-(sp)
+ move.l =gj(a6),d0
+ move.l =gk(a6),d1
+ bsr __multiply
+ move.l d0,d6
+ move.l =gl(a6),d0
+ move.l =gk(a6),d1
+ bsr __sdivide
+ add.l d0,d6
+ move.l d6,=gi(a6)
+=_$L49
+ movem.l (sp)+,d7/d6/d1/d0
+ rts 
+def44_one_int_uses_d1:
+ movem.l d7/d6/d5/d1,-(sp)
+ move.l d0,d6
+ move.l =gj(a6),d0
+ move.l d6,d1
+ bsr __multiply
+ move.l d0,d5
+ move.l =gk(a6),d0
+ move.l d6,d1
+ bsr __sdivide
+ add.l d0,d5
+ move.l d5,d0
+=_$L51
+ movem.l (sp)+,d7/d6/d5/d1
+ rts 
+def45_ret_double:
+ fmove.x fp0,-(sp)
+ fmove.l d0,fp0
+ move.l d7,-(sp)
+ fmul.d =ga(a6),fp0
+_$8$_
+ fmove.d fp0,-(sp)
+ movem.l (sp)+,d0-d1
+=_$L11
+=_$L35
+=_$L52
+ move.l (sp)+,d7
+ fmove.x (sp)+,fp0
+ rts 
+keep46_a0a1_across_call:
+ movem.l a1/a0/d7,-(sp)
+ move.l d0,a0
+ move.l d1,a1
+ move.l (a0),d1
+ add.l (a1),d1
+ bsr =x40_void_noargs
+ add.l (a0),d1
+ add.l (a1),d1
+ move.l d1,d0
+=_$L54
+ movem.l (sp)+,a1/a0/d7
+ rts 
+keep47_temps_across_call:
+ movem.l a0/d7/d6/d5/d4,-(sp)
+ move.l d0,a0
+ move.l d1,d6
+ bsr =x42_ret_int_noargs
+ move.l d0,d4
+ move.l (a0),d1
+ move.l d6,d0
+ bsr __multiply
+ move.l d0,d5
+ move.l 4(a0),d1
+ move.l d6,d0
+ bsr __multiply
+ add.l d4,d5
+ add.l d0,d5
+ move.l d5,d0
+=_$L57
+ movem.l (sp)+,a0/d7/d6/d5/d4
+ rts 
+size50_odd1:
+ move.l d7,-(sp)
+ moveq.l #0x1,d0
+=_$L58
+ move.l (sp)+,d7
+ rts 
+size51_odd3:
+ move.l d7,-(sp)
+ moveq.l #0x3,d0
+=_$L59
+ move.l (sp)+,d7
+ rts 
+size52_odd5:
+ move.l d7,-(sp)
+ moveq.l #0x5,d0
+=_$L60
+ move.l (sp)+,d7
+ rts 
+size53_odd7:
+ move.l d7,-(sp)
+ moveq.l #0x7,d0
+=_$L61
+ move.l (sp)+,d7
+ rts 
+call54_odd1_int:
+ movem.l a1/a0/d7,-(sp)
+ move.l =gi(a6),-(sp)
+ lea =godd1(a6),a0
+ subq.l #4,sp
+ move.l sp,a1
+ move.b (a0)+,(a1)+
+ bsr =x54_odd1_int
+ bra _$9$_
+call55_odd3_int:
+ movem.l a1/a0/d7,-(sp)
+ move.l =gi(a6),-(sp)
+ lea =godd3(a6),a0
+ subq.l #4,sp
+ move.l sp,a1
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ bsr =x55_odd3_int
+ bra _$9$_
+call56_odd5_int:
+ movem.l a1/a0/d7,-(sp)
+ move.l =gi(a6),-(sp)
+ lea =godd5(a6),a0
+ subq.l #8,sp
+ move.l sp,a1
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ bsr =x56_odd5_int
+ bra _$4$_
+call57_odd7_int:
+ movem.l a1/a0/d7,-(sp)
+ move.l =gi(a6),-(sp)
+ lea =godd7(a6),a0
+ subq.l #8,sp
+ move.l sp,a1
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ bsr =x57_odd7_int
+ bra _$4$_
+call58_int_odd1_int:
+ movem.l a1/a0/d7,-(sp)
+ move.l =gj(a6),-(sp)
+ lea =godd1(a6),a0
+ subq.l #4,sp
+ move.l sp,a1
+ move.b (a0)+,(a1)+
+ move.l =gi(a6),d0
+ bsr =x58_int_odd1_int
+ bra _$9$_
+call59_int_odd3_int:
+ movem.l a1/a0/d7,-(sp)
+ move.l =gj(a6),-(sp)
+ lea =godd3(a6),a0
+ subq.l #4,sp
+ move.l sp,a1
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.l =gi(a6),d0
+ bsr =x59_int_odd3_int
+ bra _$9$_
+call60_int_odd5_int:
+ movem.l a1/a0/d7,-(sp)
+ move.l =gj(a6),-(sp)
+ lea =godd5(a6),a0
+ subq.l #8,sp
+ move.l sp,a1
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.l =gi(a6),d0
+ bsr =x60_int_odd5_int
+ bra _$4$_
+call61_int_odd7_int:
+ movem.l a1/a0/d7,-(sp)
+ move.l =gj(a6),-(sp)
+ lea =godd7(a6),a0
+ subq.l #8,sp
+ move.l sp,a1
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.l =gi(a6),d0
+ bsr =x61_int_odd7_int
+ bra _$4$_
+def62_odd3_int:
+ link.w a5,#0
+ movem.l d7/d1,-(sp)
+ move.l 12(a5),d0
+ move.b 8(a5),d1
+ ext.w d1
+ ext.l d1
+ move.b 8+2(a5),d7
+ ext.w d7
+ ext.l d7
+ add.l d7,d1
+ add.l d1,d0
+=_$L78
+ movem.l (sp)+,d7/d1
+ unlk a5
+ rts 
+offs70_ci_i:
+ move.l d7,-(sp)
+ bra _$10$_
+size71_ci:
+ move.l d7,-(sp)
+ bra _$12$_
+offs72_cs_s:
+ move.l d7,-(sp)
+ bra _$10$_
+size73_cs:
+ move.l d7,-(sp)
+ bra _$11$_
+offs74_cd_d:
+ move.l d7,-(sp)
+ bra _$10$_
+size75_cd:
+ move.l d7,-(sp)
+ moveq.l #0xa,d0
+=_$L84
+ move.l (sp)+,d7
+ rts 
+size76_enum:
+ move.l d7,-(sp)
+ bra _$11$_
+size77_bf:
+ move.l d7,-(sp)
+_$11$_
+ moveq.l #0x4,d0
+=_$L82
+=_$L85
+=_$L86
+ move.l (sp)+,d7
+ rts 
+set78_bf_b:
+ move.l d7,-(sp)
+ and.b #0xffffffe0,=gbf(a6)
+ or.b #0x1,=gbf(a6)
+=_$L87
+ move.l (sp)+,d7
+ rts 
+set79_bf_c:
+ move.l d7,-(sp)
+ and.l #0xff007fff,=gbf(a6)
+ or.l #0x8000,=gbf(a6)
+=_$L88
+ move.l (sp)+,d7
+ rts 
+size80_odd2:
+ move.l d7,-(sp)
+_$10$_
+ moveq.l #0x2,d0
+=_$L79
+=_$L81
+=_$L83
+=_$L89
+ move.l (sp)+,d7
+ rts 
+size81_odd6:
+ move.l d7,-(sp)
+_$12$_
+ moveq.l #0x6,d0
+=_$L80
+=_$L90
+ move.l (sp)+,d7
+ rts 
+call82_odd2_int:
+ movem.l a1/a0/d7,-(sp)
+ move.l =gi(a6),-(sp)
+ lea =godd2(a6),a0
+ subq.l #4,sp
+ move.l sp,a1
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ bsr =x82_odd2_int
+_$9$_
+ addq.l #8,sp
+=_$L62
+=_$L64
+=_$L70
+=_$L72
+=_$L91
+ movem.l (sp)+,a1/a0/d7
+ rts 
+call83_int_odd6_int:
+ movem.l a1/a0/d7,-(sp)
+ move.l =gj(a6),-(sp)
+ lea =godd6(a6),a0
+ subq.l #8,sp
+ move.l sp,a1
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.b (a0)+,(a1)+
+ move.l =gi(a6),d0
+ bsr =x83_int_odd6_int
+_$4$_
+ add.w #12,sp
+=_$L13
+=_$L15
+=_$L66
+=_$L68
+=_$L74
+=_$L76
+=_$L93
+ movem.l (sp)+,a1/a0/d7
+ rts 
+ ends
