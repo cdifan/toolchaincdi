@@ -379,12 +379,20 @@ as x86-64 and PowerPC have:
   from d0:d1, position 1 takes an int or pointer from d1 only if position 0 used d0 alone, and
   everything else comes from the stack
 
-**Staging.** The caller side is simple and more important, since it lets GCC code call
-Microware C 3.2's `printf` and friends. It can come first. Until the callee side exists, defining a
-variadic function with the OS-9 convention (under `-mos9call`, or with an explicit `os9call`
-attribute) is rejected with an error, rather than silently miscompiled.
-This also means newlib's stdio can't be built with the flag until the callee side exists (see
-"Libraries").
+**As implemented.** Only one case needs more than a stack pointer: a function with exactly one
+named argument, passed in d0 alone. Its first unnamed argument is in d1 if it's an int or
+pointer, and on the stack otherwise; every other unnamed argument is on the stack. So under
+`-mos9call`, `va_list` is an array of one structure (as on x86-64) with two pointers: `__stk`, the
+next stack argument, and `__d1`, a copy of d1 saved by the prologue
+(`TARGET_SETUP_INCOMING_VARARGS`), or null once d1 has been used or skipped, or if it can't hold
+an argument. `va_arg` (`TARGET_GIMPLIFY_VA_ARG_EXPR`) takes an int-sized scalar from `*__d1` if
+it's set, and anything else from the stack, clearing `__d1` either way. A second `va_start` and
+`va_copy` work, since `va_arg` never changes the saved copy. Without `-mos9call`, `va_list` stays
+a plain pointer, and an `os9call` variadic function is an error only in that one case.
+
+Level 2 tests call GCC variadic functions the way Microware C 3.2 code does (ints and doubles
+in each position, two named arguments, a double first argument) and from GCC code, at every
+optimization level and with `-m68881`.
 
 **Supporting evidence from an earlier port.** The GCC 1.37.1 OS-9 port by T. Shinohara and
 A. Seyama (§3) ships a `varargs.h` "for GCC and MicroWare C". Its `va_dcl` declares the first
@@ -659,12 +667,8 @@ so adding the flag there is easy. Deferred. These cases need care:
   same mechanism covers these: typedefs whose names start with `_Unwind_` (such as
   `_Unwind_Personality_Fn`) get `stackcall` on their function type, and so do declarations of
   `_Unwind_*` functions and of the personality routines.
-- **Variadic functions block newlib's stdio for now.** Defining variadic functions under
-  `-mos9call` is an error until the callee side exists (see "Variadic functions"), so newlib's
-  `printf` family can't be built with the flag before that. Since newlib also uses these
-  functions internally, `-mos9call` programs effectively can't use newlib at all until then. The
-  supported early mode is therefore: no `-mos9call`, plus `os9call` declarations (e.g. via
-  `_OS9PROTO`) for the Microware library functions a program calls.
+- **Variadic functions** can be defined under `-mos9call` (see "Variadic functions"), so newlib's
+  `printf` family can be built with the flag.
 
 ### Headers for Microware libraries
 
@@ -1393,8 +1397,7 @@ test/
    - porting the fork to GCC 17 (§2)
    - enabling C++ in the toolchain build (`--enable-languages=c,c++`); the C++ parts of
      implementation phase 1 (mangling) and the C++ Level 1 tests apply once it's enabled
-   - the callee side of variadic functions under `-mos9call` (a target-specific `va_list`, §4)
-   - building newlib/libstdc++ with `-mos9call`, after the variadic callee side, with `stackcall`
+   - building newlib/libstdc++ with `-mos9call`, with `stackcall`
      on the functions listed in §4 "Libraries" (including `setjmp`/`longjmp` and the unwinder
      interfaces)
    - caller-side use of preserved a0/a1
