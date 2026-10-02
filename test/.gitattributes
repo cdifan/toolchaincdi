@@ -2,3 +2,7 @@
 *.sh  text eol=lf
 *.exp text eol=lf
 *.txt text eol=lf
+Makefile text eol=lf
+*.S text eol=lf
+*.lds text eol=lf
+*.flags text eol=lf

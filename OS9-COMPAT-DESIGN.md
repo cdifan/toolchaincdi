@@ -289,7 +289,11 @@ on the stack.
   *start* of it (padding after the data). GCC currently right-justifies aggregates smaller than 4
   bytes (a 1-byte struct at offset 3 of its slot, a 2-byte one at offset 2, a 3-byte one at
   offset 1), so `-mos9call` must pad them upward instead.
-  From 5 bytes up, GCC already matches.
+  From 5 bytes up, GCC already matches. GCC's padding hook doesn't know the call's convention,
+  so the upward padding applies to all calls under `-mos9call`, and passing an aggregate smaller
+  than 4 bytes by value to a function of the other convention (a `stackcall` function under the
+  flag, an `os9call` one without it) is an error. A 1-byte struct is pushed by m68k's `pushqi1`
+  pattern, which normally stores the byte at offset 1; under the flag it stores it at offset 0.
 
 **Widened prototypes.** This applies only at the boundary with Microware-compiled code. Between
 GCC-compiled functions, prototyped `char`, `short` and `float` parameters, and `float` return
@@ -541,10 +545,10 @@ Insertion points in the GCC 11 tree (`gcc/config/m68k/`; line numbers approximat
 | `m68k.h` ~60, `TARGET_CPU_CPP_BUILTINS` | predefined macros | define `__OS9CALL__` under `-mos9call` |
 | `m68k.h` ~495, `CUMULATIVE_ARGS` | per-call argument-scanning state | remember whether the call uses the OS-9 convention, the argument position, and where arg 1 went (d0, d0:d1 or the stack) |
 | `m68k.h` ~498, `INIT_CUMULATIVE_ARGS` | runs per call site and for the function being compiled | decide the convention from the function type and its `stackcall`/`os9call` attribute; libcalls (no type), `METHOD_TYPE`, `interrupt_handler` functions keep the stack convention; built-in declarations get it from their `stackcall` type (see "Libraries"). One predicate, given the function type, makes this decision for every hook. (`m68k.h` names the 4th argument of `INIT_CUMULATIVE_ARGS` `INDIRECT`, but `calls.c` passes the function declaration.) |
-| `m68k.h` ~491, `FUNCTION_ARG_REGNO_P` | which registers can carry arguments | admit d0 and d1. This is global: it feeds dataflow entry definitions, alias analysis, if-conversion and loop invariants, so it may change code built without the flag. It can't depend on the flag alone, since `os9call` works without it. Run Level 0 right after this change; if anything differs, make it depend on the current function |
+| `m68k.h` ~491, `FUNCTION_ARG_REGNO_P` | which registers can carry arguments | admit d0 and d1. This is global: it feeds dataflow entry definitions, alias analysis, if-conversion and loop invariants. As implemented, it admits them under `-mos9call` or once an `os9call` attribute has been applied in the translation unit, so code using neither is unchanged (Level 0 confirms it) |
 | `m68k.c` ~1447, `m68k_function_arg` | where an argument goes (register, or stack) | the positional rules of §3/§4, applied to named and unnamed arguments alike (variadic calls behave like unprototyped calls) |
 | `m68k.c` ~1453, `m68k_function_arg_advance` | updates the state after each argument | track position and register use; stack byte counting must keep working |
-| `m68k.c`, `TARGET_FUNCTION_ARG_PADDING` (new) | how arguments smaller than their slot are padded | under `-mos9call`, pad aggregates upward (data at the start of the slot) |
+| `m68k.c`, `TARGET_FUNCTION_ARG_PADDING` (new) | how arguments smaller than their slot are padded | under `-mos9call`, pad aggregates upward (data at the start of the slot); `pushqi1` in `m68k.md` follows it for 1-byte structs |
 | `m68k.c` ~294/~5928, `TARGET_RETURN_IN_MEMORY` | which return types go through memory | defined under `M68K_HONOR_TARGET_STRICT_ALIGNMENT`, which is 1 by default (only `linux.h` sets 0), so the hook is active on `elfos9`; under `-mos9call`, all aggregates, `long double` and `_Complex` types (the Ultra C 2.5 a0 convention, §4) |
 | `m68k.c` ~917, `m68k_save_reg` | which registers the prologue saves | a0/a1 when used or non-leaf; d1 unless it carries an incoming argument or the return value (d0 never); model it on the `interrupt_handler` branch, using `crtl->args.info` for incoming arguments |
 | `m68k.c` ~1401, `m68k_ok_for_sibcall_p` | whether a tail call is allowed | refuse for os9call functions |
