@@ -31,6 +31,7 @@ repositories.
 - newlib
     - _no_ any syscall implementation but namespace clean
         - you must implement OS-9 syscall if you want, with `_` prefix
+    - built twice (multilibs): for GCC's own calling convention and for `-mos9call`; the driver picks the right `libc.a` from the flags
 - elf2mod
     - converts specially-crafted ELF into OS-9/68000 executable (module) file
     - [see elf2mod.md in the elf2mod fork](https://github.com/cdifan/elf2mod/blob/main-compat/elf2mod.md)
@@ -95,8 +96,9 @@ ENTRY(start)
 SECTIONS {
     .text : {
         *(.text_startup)
-        *(.text .text.*)
-        *(.rodata .rodata.*)
+        /* one statement, so each object's constants follow its code and stay
+           within PC-relative reach in programs over 32K (newlib's stdio) */
+        *(.text .text.* .rodata .rodata.*)
         /* *(.init)
             *(.fini) */
         . = ALIGN(2);

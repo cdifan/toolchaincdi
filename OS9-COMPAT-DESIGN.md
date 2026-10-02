@@ -612,7 +612,7 @@ If application code is built with `-mos9call`, every library it calls through or
 calls must use the same convention: newlib (`printf`, …) and, for C++, libstdc++/libsupc++. That
 means building them with the flag, as a multilib or by making the convention the default for the
 target. newlib is configured separately in the `Dockerfile`, with its own `CFLAGS_FOR_TARGET`,
-so adding the flag there is easy. Deferred. These cases need care:
+so adding the flag there is easy. These cases need care:
 
 - **libgcc must be built *without* `-mos9call`.** The compiler calls its helpers (`__mulsi3`,
   soft-float routines, …) as libcalls, which keep the stack convention, but their *definitions*
@@ -661,6 +661,25 @@ so adding the flag there is easy. Deferred. These cases need care:
 - **Other assembly sources don't follow the flag.** newlib's m68k `setjmp.S` reads its arguments
   from the stack, so `setjmp`/`longjmp` will need `stackcall` declarations (or os9call variants)
   when newlib is built with the flag (§12).
+
+**As implemented:** the `m68k-elfos9` GCC has two multilibs, the default and `-mos9call`
+(directory `os9call`; `m68k/t-elfos9`, replacing the per-CPU `t-mlibs`, which the build didn't
+use), and GCC and newlib are configured with `--enable-multilib`. libgcc gets `-mno-os9call` in
+both (`libgcc/config/m68k/t-elfos9`), so the two `libgcc.a` are the same. newlib's `setjmp.S` has
+an os9call variant (arguments in d0/d1 when `__OS9CALL__` is defined), on branch
+`newlib-4.1.0-os9-compat` of `cdifan/newlib-cygwin`; with `setjmp`/`longjmp` os9call in both
+libraries, `-mbuiltin=os9call` programs (Microware's `clib`) agree too. `make check-newlib` in
+`test/abi-exec` runs `nltests/` in both multilibs: `sprintf`, `sscanf`, `strtol`, `qsort` calling
+back, a `va_list` passed to `vsnprintf`, `setjmp`/`longjmp` and `malloc`, as OS-9 modules, since
+newlib's stdio makes programs larger than 32 KB (elf2mod's jump table). The test linker script
+now lists `.rodata` with `.text` in one statement, so each object's constants follow its code
+within PC-relative reach. Building newlib this way found two long-standing bugs of `-ma6rel`,
+fixed on branches of their own for Murachue's fork (see "Branches" in §10):
+- read-only variables that hold addresses (`const char *const tbl[]`, newlib's locale tables)
+  were addressed PC-relative, though they need relocating and GCC places them in a writable
+  section; now they're data, addressed relative to a6, decided by the type
+- libgcc's soft-float routines reached `_fpCCR` through the GOT (below, §12); now relative to a6,
+  with `-ma6rel` defining `__A6REL__`
 - **libsupc++** (built with the flag) calls `_Unwind_*` through the declarations in `unwind.h`,
   which aren't built-ins. Calls also go the other way: the unwinder calls the personality routine
   (`__gxx_personality_v0`) and the exception cleanup function through function pointers. The
@@ -1260,6 +1279,15 @@ Development happens in forks under [github.com/cdifan][cdifan]:
   Murachue's **`11.1.0-os9`** branch is kept unchanged as the reference. Our work goes on
   **`11.1.0-os9-compat`**, branched from it, and `.gitmodules` will point `src/gcc` at that
   branch once it has commits.
+- **Fixes to Murachue's own code** go on separate branches from `11.1.0-os9`, one commit each,
+  so they can be offered to his fork, and are merged into `11.1.0-os9-compat`:
+  `11.1.0-os9-const-pointers` (read-only variables holding addresses are a6-relative data) and
+  `11.1.0-os9-lb1sf68-a6rel` (libgcc's soft-float routines reach `_fpCCR` relative to a6, and
+  `-ma6rel` defines `__A6REL__`). Both change code built without `-mos9call`, so Level 0 compares
+  with Murachue's branch plus these fixes (§11). They're AI-assisted, like the rest of the fork:
+  whether to offer them is Murachue's call, and GCC's policy below concerns the FSF's GCC.
+- **`cdifan/newlib-cygwin`** (forked from `murachue/newlib-cygwin`): branch
+  `newlib-4.1.0-os9-compat`, with the os9call `setjmp`/`longjmp` (§4 "Libraries").
 - Other submodules (newlib, elf2mod, …) are forked when they need changes, and follow the same
   pattern: the upstream branch is kept, and the work branch gets a `-compat` suffix.
 - **`cdifan/elf2mod`** (to be forked from `murachue/elf2mod`, branch `main-compat`) will also hold
@@ -1305,7 +1333,10 @@ Without `-mos9call`, the compiler must behave exactly as before.
   realistic code, such as a selection of newlib and libgcc sources. Compile it at `-O0` and `-O2`,
   with the usual OS-9 flags (`-mpcrel -ma6rel`, with and without `-mbsrw`).
 - After every change, recompile the corpus without `-mos9call` and require
-  **byte-identical** assembly.
+  **byte-identical** assembly. Deliberate fixes to Murachue's code that change it (§10,
+  "Branches") move the reference: it's then his branch plus those fixes, as built from
+  `11.1.0-os9-const-pointers` (`test/baseline/run.sh` explains; with the unmodified compiler,
+  `strftime` differs).
 - A small script does the compile-and-diff; it runs in the build environment (§8).
 
 ### Level 1: compile-only ABI checks
@@ -1473,9 +1504,8 @@ test/
    - porting the fork to GCC 17 (§2)
    - enabling C++ in the toolchain build (`--enable-languages=c,c++`); the C++ parts of
      implementation phase 1 (mangling) and the C++ Level 1 tests apply once it's enabled
-   - building newlib/libstdc++ with `-mos9call`, with `stackcall`
-     on the functions listed in §4 "Libraries" (including `setjmp`/`longjmp` and the unwinder
-     interfaces)
+   - building libstdc++ with `-mos9call` (newlib is done, §4 "Libraries"), with `stackcall` on
+     the unwinder interfaces
    - caller-side use of preserved a0/a1
    - the emulator serial bridge
    - the assembler's default CPU (§6, "Branches within a function"): the README now documents
@@ -1486,11 +1516,6 @@ test/
      more restores its FPU registers through a1 after restoring a1. OS-9 convention functions
      avoid it (FPU registers first, a1 last); interrupt handlers are left unchanged to keep code
      built without the flag identical
-   - libgcc's soft-float routines (`lb1sf68.S`, assembled as PIC because of `-mpcrel`) read their
-     rounding mode `_fpCCR` through the GOT, and in a static link with the README's linker script
-     the GOT reference resolves to the wrong word (found by the Level 2 harness; independent of
-     `-mos9call`). Check how `elf2mod` handles GOT references, and whether libgcc's `.S` files
-     should be built without PIC
 
 ## 13. References
 

@@ -6,6 +6,7 @@
 #                        -m68020 -m68881 on an emulated 68040
 #   make check-mw MWLIB=DIR  also link with Microware's C library (see below)
 #   make check-mod       run the tests as OS-9 modules made by elf2mod (see below)
+#   make check-newlib    run nltests/ with newlib, in both multilibs (see below)
 #   make check-l68 L68=... [MWLIB=...]  run them as modules linked by
 #                        Microware's l68, through elf2rof; with MWLIB also
 #                        the Level 3 tests, with Microware's clib.l (see below)
@@ -155,6 +156,40 @@ check-mod:
 	  $(MAKE) --no-print-directory BUILD=$(BUILD)/mod-$$o \
 	    CFLAGS_T="$$(echo -$$o | sed 's/bsrw/ -mbsrw/') -mpcrel -ma6rel -mos9call" run-mod || exit 1; done
 
+# newlib, in each multilib: nltests/ compiled with GCC's stack convention
+# and with -mos9call, and linked with the libc of that multilib (the
+# installed newlib, built with --enable-multilib).  newlib's stdio makes
+# the program larger than the 32 KB that calls reach, so it runs as an
+# OS-9 module with elf2mod's jump table, as a real program would.
+#   make check-newlib
+NLTESTS  = $(basename $(notdir $(wildcard $(HERE)nltests/*.c)))
+NLJMPTBL = 600
+CONV     =
+# The installed newlib (the build tree's xgcc doesn't search it); the
+# compiler picks the multilib directory.
+NEWLIB  ?= $(HOME)/build/install/m68k-elfos9
+
+$(BUILD)/%.nlmod: $(HERE)nltests/%.c $(HERE)crt0.S $(HERE)abi.lds $(BUILD)/elf2mod
+	mkdir -p $(BUILD)
+	$(GCC) -c -O2 -mpcrel -ma6rel $(CONV) -isystem $(NEWLIB)/include -o $(BUILD)/$*.o $<
+	$(TPREFIX)as -m68000 --pcrel -o $(BUILD)/crt0.o $(HERE)crt0.S
+	$(TPREFIX)ld -q --noinhibit-exec --no-check-sections --defsym __jmptbl_size=$(NLJMPTBL) \
+	  -T $(HERE)abi.lds -o $(BUILD)/$*.nlelf $(BUILD)/crt0.o $(BUILD)/$*.o \
+	  $(NEWLIB)/lib/$$($(GCC) $(CONV) -print-multi-directory)/libc.a \
+	  $$($(GCC) $(CONV) -print-libgcc-file-name) 2> $(BUILD)/$*.ld.log
+	$(BUILD)/elf2mod $(BUILD)/$*.nlelf $@
+
+run-newlib: $(BUILD)/abirun $(NLTESTS:%=$(BUILD)/%.nlmod)
+	@fail=0; for t in $(NLTESTS); do \
+	  if $(BUILD)/abirun -m $(BUILD)/$$t.nlmod; then echo "PASS: $$t"; \
+	  else echo "FAIL: $$t"; fail=1; fi; done; exit $$fail
+
+check-newlib:
+	@echo "== newlib, stack convention"; \
+	  $(MAKE) --no-print-directory BUILD=$(BUILD)/nl-stack CONV= run-newlib || exit 1; \
+	  echo "== newlib, -mos9call (multilib $$($(GCC) -mos9call -print-multi-directory))"; \
+	  $(MAKE) --no-print-directory BUILD=$(BUILD)/nl-os9call CONV=-mos9call run-newlib
+
 # Microware's linker: the same objects converted by elf2rof (from
 # src/elf2mod), linked with l68 and run as OS-9 modules; modtests/ with
 # l68 -a, which builds l68's own jump table.  l68 -a only redirects bsr.w
@@ -216,5 +251,6 @@ check-l68:
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all run run-mod run-l68 check check-mw check-mod check-l68 clean
+.PHONY: all run run-mod run-l68 run-mw-l68 run-newlib check check-mw check-mod check-l68 \
+	check-newlib clean
 .SECONDARY:

@@ -13,8 +13,10 @@ ENTRY(_start)
 SECTIONS {
     . = 0x400000;
     .text : {
-        *(.text .text.*)
-        *(.rodata .rodata.*)
+        /* One statement, so each object's constants follow its code:
+           code reaches them PC-relative (+-32 KB), also in programs with
+           more code than that (newlib's stdio).  */
+        *(.text .text.* .rodata .rodata.*)
         . = ALIGN(2);
     }
 

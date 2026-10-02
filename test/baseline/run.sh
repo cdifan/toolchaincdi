@@ -2,7 +2,11 @@
 # Level 0: compile the corpus with the reference and the changed compiler, without
 # -mos9call, and require byte-identical assembly. See OS9-COMPAT-DESIGN.md §11.
 #
-#   REF_GCC  reference (unmodified) driver   default: ~/build/install-ref/bin/m68k-elfos9-gcc
+#   REF_GCC  reference driver                default: ~/build/install-fix/bin/m68k-elfos9-gcc
+#            Murachue's 11.1.0-os9 with the fix that changes code without
+#            -mos9call on purpose (branch 11.1.0-os9-const-pointers: read-only
+#            variables holding addresses are a6-relative data); the
+#            unmodified compiler (~/build/install-ref) differs in strftime.
 #   NEW_GCC  changed driver                  default: ~/build/gcc-build/gcc/xgcc -B~/build/gcc-build/gcc/
 #   SRC, GB, NB  source, GCC build and newlib build directories (defaults under ~/build)
 #   WORK     output directory                default: ~/build/baseline-work
@@ -11,7 +15,7 @@ REPO=$(cd "$(dirname "$0")/../.." && pwd)
 SRC=${SRC:-$HOME/build/src}
 GB=${GB:-$HOME/build/gcc-build}
 NB=${NB:-$HOME/build/newlib-build}
-REF_GCC=${REF_GCC:-$HOME/build/install-ref/bin/m68k-elfos9-gcc}
+REF_GCC=${REF_GCC:-$HOME/build/install-fix/bin/m68k-elfos9-gcc}
 NEW_GCC=${NEW_GCC:-"$GB/gcc/xgcc -B$GB/gcc/"}
 WORK=${WORK:-$HOME/build/baseline-work}
 NL="-isystem $NB/m68k-elfos9/newlib/targ-include -isystem $SRC/newlib-cygwin/newlib/libc/include -DCOMPACT_CTYPE -D__NO_SYSCALLS__ -DHAVE_INIT_FINI"

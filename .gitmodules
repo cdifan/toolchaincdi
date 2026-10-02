@@ -8,8 +8,8 @@
 	branch = 11.1.0-os9-compat
 [submodule "newlib-cygwin"]
 	path = src/newlib-cygwin
-	url = https://github.com/murachue/newlib-cygwin.git
-	branch = newlib-4.1.0-os9
+	url = https://github.com/cdifan/newlib-cygwin.git
+	branch = newlib-4.1.0-os9-compat
 [submodule "psximager"]
 	path = src/psximager
 	url = https://github.com/murachue/psximager.git

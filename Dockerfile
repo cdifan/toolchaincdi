@@ -48,7 +48,7 @@ RUN ../src/binutils-gdb/configure --target=m68k-elfos9 --prefix=/usr --disable-m
   cp -r /work/binutils-root/usr /
 
 WORKDIR /work/gcc-bootstrap-build
-RUN CFLAGS_FOR_TARGET="-mpcrel -ma6rel -mbsrw" ../src/gcc/configure --prefix=/usr --target=m68k-elfos9 --enable-languages="c" --disable-multilib --with-cpu=68000 --with-system-zlib --with-libgloss --without-headers --disable-shared --disable-nls && \
+RUN CFLAGS_FOR_TARGET="-mpcrel -ma6rel -mbsrw" ../src/gcc/configure --prefix=/usr --target=m68k-elfos9 --enable-languages="c" --enable-multilib --with-cpu=68000 --with-system-zlib --with-libgloss --without-headers --disable-shared --disable-nls && \
   make all-gcc all-target-libgcc -j$(grep -c ^processor /proc/cpuinfo) && \
   mkdir -p /work/gcc-bootstrap-root && \
   make DESTDIR=/work/gcc-bootstrap-root install-gcc install-target-libgcc && \
@@ -57,7 +57,7 @@ RUN CFLAGS_FOR_TARGET="-mpcrel -ma6rel -mbsrw" ../src/gcc/configure --prefix=/us
   cp -r /work/gcc-bootstrap-root/usr /
 
 WORKDIR /work/newlib-build
-RUN CFLAGS_FOR_TARGET="-Os -g -mpcrel -ma6rel -ffunction-sections -fdata-sections -fomit-frame-pointer -ffast-math" ../src/newlib-cygwin/configure --target=m68k-elfos9 --prefix=/usr --disable-newlib-supplied-syscalls --disable-multilib --with-cpu=68000 --disable-nls && \
+RUN CFLAGS_FOR_TARGET="-Os -g -mpcrel -ma6rel -ffunction-sections -fdata-sections -fomit-frame-pointer -ffast-math" ../src/newlib-cygwin/configure --target=m68k-elfos9 --prefix=/usr --disable-newlib-supplied-syscalls --enable-multilib --with-cpu=68000 --disable-nls && \
   make -j$(grep -c ^processor /proc/cpuinfo) && \
   mkdir -p /work/newlib-root && \
   DESTDIR=/work/newlib-root/ make install && \
