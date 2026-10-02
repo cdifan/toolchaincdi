@@ -88,7 +88,7 @@ $(BUILD)/mw/cstart.o $(BUILD)/mw/clib.a: $(BUILD)/rof2elf
 	$(TPREFIX)ranlib $(BUILD)/mw/clib.a
 
 $(BUILD)/mw/%.elf: $(HERE)mwtests/%.c $(HERE)crt0.S $(HERE)abi.lds $(BUILD)/mw/cstart.o $(BUILD)/mw/clib.a
-	$(GCC) -c $(CFLAGS_MW) -o $(BUILD)/mw/$*.o $<
+	$(GCC) -c $(or $(file <$(HERE)mwtests/$*.flags),$(CFLAGS_MW)) -o $(BUILD)/mw/$*.o $<
 	$(TPREFIX)as -m68000 --pcrel -o $(BUILD)/mw/crt0.o $(HERE)crt0.S
 	$(TPREFIX)ld -T $(HERE)abi.lds -o $@ $(BUILD)/mw/crt0.o $(BUILD)/mw/$*.o \
 	  $(BUILD)/mw/cstart.o $(BUILD)/mw/clib.a $(LIBGCC)

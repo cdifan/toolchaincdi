@@ -6,7 +6,7 @@ This is a fork of [murachue/toolchaincdi](https://github.com/murachue/toolchainc
 everything Murachue built kept as-is. It adds work on interoperating with Microware OS-9 C
 compilers and libraries:
 - an `-mos9call` option for the Microware C calling convention
-- a planned, opt-in `-mos9stkchk` option for Microware C 3.2-compatible stack checking
+- an opt-in `-mos9stkchk` option for Microware C 3.2-compatible stack checking
 - `rof2elf` and (planned) `elf2rof` converters for Microware ROF object files
 
 See [OS9-COMPAT-DESIGN.md](OS9-COMPAT-DESIGN.md) for the design and current status.

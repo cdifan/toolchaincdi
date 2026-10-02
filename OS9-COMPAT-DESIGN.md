@@ -528,14 +528,20 @@ making calls, where Microware C 3.2 uses 64; that's harmless. When `N` ≤ 128, 
 enough.
 
 Microware C 3.2 saves registers first and checks afterwards, so whatever `_stkcheck` clobbers has
-already been saved. GCC checks first, so until `_stkcheck`'s contract is known, it saves around
-the check every register `_stkcheck` might clobber that is live on entry or must be preserved for
-the caller: for os9call functions d1 always (it's callee-saved, §4 "Register preservation"), and
-d0 when it carries an argument; for any function, a0 when it carries the struct-return address
-and a1 when it carries the static chain (e.g. `movem.l d0/d1,-(sp)` before the check and
-`movem.l (sp)+,d0/d1` after). If `_stkcheck` turns out to preserve everything except d0, only d0
-needs saving. The rest of its contract (other registers, what it does on overflow) is a research
-item: disassemble it with the ROF tooling (§6).
+already been saved. GCC checks first. Disassembling `_stkcheck` from `cstart.r` (converted with
+`rof2elf`, §6) settled its contract: `d0` is `-N` on entry; it adds `sp`, compares the result with
+`_stbot` (the lowest stack address so far) and returns if it isn't lower; otherwise it compares
+with `_mtop` (the limit), stores the new low point in `_stbot` and returns, or on overflow prints
+a message and exits. On the normal path it changes only `d0` and the flags. So GCC saves only
+`d0` around the check, and only when it carries an argument (`move.l d0,-(sp)` before,
+`move.l (sp)+,d0` after).
+
+**As implemented:** `-mos9stkchk` emits `moveq`/`move.l #-N,d0` and `bsr.w _stkcheck` (`jsr`
+without `-mpcrel`) at the start of the prologue, through an `unspec_volatile` insn in `m68k.md`.
+Level 1 tests check `N`, placement and the `d0` save; a Level 3 test (§11) runs checked code
+against Microware's own `_stkcheck` and watches `_stbot` go down as the stack grows. Variables
+that `_stkcheck` changes must be `volatile` in C code that reads them, since GCC can't see the
+change.
 
 `_stkcheck` also keeps a low-water mark of the stack pointer, which `freemem()` and `stacksiz()`
 report; those are only accurate if all code is built with stack checking.
@@ -1396,10 +1402,6 @@ test/
    - `.stb` symbol modules from `elf2mod` (§6)
    - large programs (§6): the `_jmptbl` jump table in `elf2mod`, and the `remote` attribute in
      GCC plus its handling in `elf2mod` and the linker script
-   - Microware-compatible stack checking, `-mos9stkchk` (§4, "Stack checking"); requires
-     `rof2elf`, and the rest of `_stkcheck`'s contract. Its Level 1 tests: `N` values, placement
-     at the start of the prologue, the register saves around the check, the `-ma6rel`
-     requirement, and no check in `interrupt_handler` functions
    - the assembler's default CPU (§6, "Branches within a function"): the README now documents
      `-m68000 --pcrel` for hand-written assembly; making the binutils build default to the 68000
      remains an option
