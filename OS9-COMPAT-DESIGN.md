@@ -619,6 +619,13 @@ so adding the flag there is easy. Deferred. These cases need care:
   `memmove` and `memcmp` aren't called by libgcc and newlib defines them in C, so they stay
   unattributed (os9call under the flag). There is no `atexit` registration from startup code: the
   `elfos9` install has no `crtbegin`/`crtend`.
+- **Microware's `clib` instead of newlib: `-mbuiltin=os9call`.** The list above is right for newlib.
+  Microware's `clib.l` defines `memcpy`, `memset`, `strlen`, `malloc`, `free` and `abort` with the
+  OS-9 convention, so a program linked against it needs them as os9call, including GCC's own
+  `memcpy` calls for block moves (found when linking `rof2elf`-converted `clib`; see §6).
+  `-mbuiltin=os9call` selects that; `-mbuiltin=stackcall` is the default. libgcc's own entry
+  points keep the stack convention either way; its DWARF unwinder and emulated TLS, which call
+  these functions, can't be used with `-mbuiltin=os9call`.
 - **Runtime entry points called through built-in declarations.** GCC calls some of these
   functions through its own built-in declarations, which have a real function type, so
   `-mos9call` callers would use the OS-9 convention for them. Marking their *definitions*
