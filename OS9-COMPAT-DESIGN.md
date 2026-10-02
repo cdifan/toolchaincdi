@@ -400,8 +400,10 @@ continue with the stack arguments.
 **Confirmed by running the library:** with the CD-i `clib.l` converted by `rof2elf` (§6) and linked
 with `-mos9call` code, Microware C 3.2's `sprintf` and `sscanf` read their arguments correctly
 when called with this positional placement: `sprintf(buf, "%d %s %x %c", -7, "str", 255, 'z')`
-gives `-7 str ff z` (Level 3, §11). Doubles as unnamed arguments are untested, since printing them
-needs OS-9's math trap handler.
+gives `-7 str ff z` (Level 3, §11), and a double as an unnamed argument is read from the stack,
+high half first: `sprintf(buf, "%d %x %x %d", 7, 1.5, 9)` gives `7 3ff80000 0 9`. Not yet
+checked: a double as the second argument of a variadic call (on the stack, not in d1), which needs
+a library function with one named parameter, such as `printf`, and so OS-9 for its I/O.
 
 ### Return values
 

@@ -2,7 +2,8 @@
    library (clib.l and cstart.r, converted with rof2elf), and called back
    by it.  The harness has no OS-9, so only functions that make no system
    calls are used: not malloc, file I/O, or floating point (atof and
-   printf's %f go through OS-9's math trap handler, trap #15).
+   printf's %f go through OS-9's math trap handler, trap #15).  Doubles
+   are still passed, and their placement checked with %x.
    Compiled with -mos9call -mbuiltin=os9call; main returns a bit mask of
    the failed checks.  */
 
@@ -61,5 +62,9 @@ main (void)
   strcpy (word, "hello");
   check (index (word, 'l') == word + 2, 10);
   check (atol ("-123456") == -123456L, 11);
+  /* A double as an unnamed argument: 8 bytes on the stack, high half first.
+     %x reads the halves, which avoids the math trap that %f needs.  */
+  sprintf (buf, "%d %x %x %d", 7, 1.5, 9);
+  check (eq (buf, "7 3ff80000 0 9"), 12);
   return fails;
 }
