@@ -5,7 +5,7 @@
 [submodule "gcc"]
 	path = src/gcc
 	url = https://github.com/cdifan/gcc.git
-	branch = 11.1.0-os9
+	branch = 11.1.0-os9-compat
 [submodule "newlib-cygwin"]
 	path = src/newlib-cygwin
 	url = https://github.com/murachue/newlib-cygwin.git
@@ -18,3 +18,7 @@
 	path = src/elf2mod
 	url = https://github.com/murachue/elf2mod.git
 	branch = main
+[submodule "test/abi-exec/musashi"]
+	path = test/abi-exec/musashi
+	url = https://github.com/kstenerud/Musashi.git
+	branch = master

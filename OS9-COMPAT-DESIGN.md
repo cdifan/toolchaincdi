@@ -553,8 +553,7 @@ Insertion points in the GCC 11 tree (`gcc/config/m68k/`; line numbers approximat
 | `m68k.c`, `TARGET_COMP_TYPE_ATTRIBUTES` (new) | whether two function types' attributes are compatible | function types with different *effective* conventions are incompatible (no attribute means `os9call` under `-mos9call` and `stackcall` without it), so assigning between them is diagnosed, and in C++ they're distinct types |
 | `m68k-os9.h`, `FUNCTION_VALUE` (or a new `TARGET_FUNCTION_VALUE`) | where return values go | on `elfos9`, `m68kemb.h` maps `FUNCTION_VALUE` to `LIBCALL_VALUE`, so `m68k_function_value` is never used. Redefine it to decide from the function type: for os9call functions, float and double in d0 / d0:d1 even with `-m68881`. `m68k_libcall_value` stays unchanged, since libcalls keep the stack convention |
 | `m68k.c`, `m68k_option_override` | option sanity checks | the option rules in "Options and special cases": reject `-mshort`, `-mrtd`, `-pg`, `-finstrument-functions`, `-fprofile-arcs`, `-fprofile-generate`, `-fuse-cxa-atexit`, `-fstack-limit-symbol` and `-fstack-limit-register` with d0/d1, and `-mos9stkchk` without `-ma6rel`; warn for `-m68881`, missing `-ma6rel`, and the layout-changing `-malign-int`, `-fshort-enums` and `-fpack-struct` |
-| `m68k.c`, `TARGET_INIT_LIBFUNCS` (new) | runs once after all built-ins exist (from `init_optabs`, after `build_common_builtin_nodes`) | give the built-in declarations listed in "Libraries" a `stackcall` function type, both the `__builtin_` and the plain declaration, including `_Unwind_Resume` |
-| `m68k.c`, `TARGET_INSERT_ATTRIBUTES` (new) | adds attributes to declarations as they're created | under `-mos9call`, add `stackcall` to user declarations of the names listed in "Libraries" that have no convention attribute (e.g. K&R `char *malloc();`), so they keep matching the definitions |
+| `m68k.c`, `TARGET_INSERT_ATTRIBUTES` (new) | adds attributes to every declaration as it's created, GCC's built-in declarations included | under `-mos9call`, add `stackcall` to declarations and typedefs of the names listed in "Libraries" that have no convention attribute: built-ins (by library name), headers, definitions and K&R redeclarations alike |
 | `m68k.c`, `TARGET_SETUP_INCOMING_VARARGS` (new) | called for each variadic function definition | until the callee side exists, an error for variadic functions with the OS-9 convention |
 | `m68k.c` ~7065, `m68k_trampoline_init` | builds a nested function's trampoline | an error for nested functions with the OS-9 convention |
 | `m68k.md` ~6062, `untyped_call` expander | implements `__builtin_apply` | an error under the OS-9 convention (`__builtin_apply_args` and `__builtin_return` likewise) |
@@ -612,33 +611,25 @@ so adding the flag there is easy. Deferred. These cases need care:
 - **Runtime entry points called through built-in declarations.** GCC calls some of these
   functions through its own built-in declarations, which have a real function type, so
   `-mos9call` callers would use the OS-9 convention for them. Marking their *definitions*
-  `stackcall` wouldn't help, because callers only see the built-in declaration. So the backend
-  gives the built-in declarations of the functions above a `stackcall` function type in
-  `TARGET_INIT_LIBFUNCS`, which runs after all built-ins exist, including `_Unwind_Resume`
-  (created late, in `build_common_builtin_nodes`). Both the `__builtin_memcpy` and the plain
-  `memcpy` declaration are retyped.
-
-  newlib's headers declare the same functions `stackcall`, so headers, built-ins and function
-  pointers (`&memcpy`) all agree, and GCC keeps treating them as built-ins (a header declaration
-  whose type differs from the built-in's would otherwise make GCC warn and drop the built-in).
-  newlib's m68k assembly versions stay as they are, and its C definitions of `strlen`, `malloc`
-  and `free` need `stackcall` too: under `-mos9call` an unattributed definition is `os9call` and
-  would conflict with the header's declaration.
-- **User redeclarations.** Old code often declares library functions itself, e.g. K&R
-  `char *malloc();` or a private prototype of `memcpy`. Under `-mos9call` such a declaration is
-  unattributed, so os9call; GCC would only warn (`-Wbuiltin-declaration-mismatch`) and call the
-  `stackcall` definition with the wrong convention. So the backend adds `stackcall` to
-  declarations of the names listed above that have no convention attribute
-  (`TARGET_INSERT_ATTRIBUTES`).
+  `stackcall` wouldn't help, because callers only see the built-in declaration.
+- **One mechanism for all declarations (as implemented).** GCC passes every declaration through
+  `TARGET_INSERT_ATTRIBUTES` when it's created, including its own built-in declarations (both
+  `__builtin_memcpy` and the plain `memcpy`, and `_Unwind_Resume`, which is created late, in
+  `build_common_builtin_nodes`). Under `-mos9call` the backend adds `stackcall` there to every
+  declaration of the functions above that has no convention attribute: built-ins (recognized by
+  their library name), header declarations, definitions, and old code's own redeclarations such
+  as K&R `char *malloc();` (which GCC would otherwise only warn about, and then call with the
+  wrong convention). So headers, built-ins, definitions and function pointers (`&memcpy`) all
+  agree, and GCC keeps treating the functions as built-ins. newlib's headers and C definitions
+  need no changes, and its m68k assembly versions stay as they are.
 - **Other assembly sources don't follow the flag.** newlib's m68k `setjmp.S` reads its arguments
   from the stack, so `setjmp`/`longjmp` are declared `stackcall` (or get os9call variants).
 - **libsupc++** (built with the flag) calls `_Unwind_*` through the declarations in `unwind.h`,
-  which aren't built-ins, so those declarations need `stackcall` too. Calls also go the other
-  way: the unwinder calls the personality routine (`__gxx_personality_v0`) and the exception
-  cleanup function through function pointers. So the typedefs `_Unwind_Personality_Fn`,
-  `_Unwind_Exception_Cleanup_Fn`, `_Unwind_Stop_Fn` and `_Unwind_Trace_Fn` are `stackcall`, and
-  the personality routine's definition is marked `stackcall` explicitly, since nothing assigns it
-  to a typed pointer that would catch a mismatch.
+  which aren't built-ins. Calls also go the other way: the unwinder calls the personality routine
+  (`__gxx_personality_v0`) and the exception cleanup function through function pointers. The
+  same mechanism covers these: typedefs whose names start with `_Unwind_` (such as
+  `_Unwind_Personality_Fn`) get `stackcall` on their function type, and so do declarations of
+  `_Unwind_*` functions and of the personality routines.
 - **Variadic functions block newlib's stdio for now.** Defining variadic functions under
   `-mos9call` is an error until the callee side exists (see "Variadic functions"), so newlib's
   `printf` family can't be built with the flag before that. Since newlib also uses these
