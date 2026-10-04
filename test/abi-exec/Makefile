@@ -10,6 +10,13 @@
 #   make check-l68 L68=... [MWLIB=...]  run them as modules linked by
 #                        Microware's l68, through elf2rof; with MWLIB also
 #                        the Level 3 tests, with Microware's clib.l (see below)
+#   make check-os9 MWLIB=DIR  run the Level 3 tests on OS-9 itself, in a
+#                        CD-i player or CD-i Emulator, through cdirun (see below)
+#   make check-os9mix MWLIB=DIR  the same with code compiled by Microware C on
+#                        OS-9, linked both ways (see below)
+#   make check-os9mod    run the check-mod modules on OS-9 itself (see below)
+#   make check-os9newlib run nltests/ on OS-9 itself, with newlib's OS-9 runtime
+#   make check-os9math   floating point on OS-9 itself, with -mos9math too
 #   make GCC=...         compiler driver to test
 #   make BUILD=...       build directory (default ~/build/abi-exec)
 
@@ -173,6 +180,7 @@ check-mod:
 NLTESTS  = $(basename $(notdir $(wildcard $(HERE)nltests/*.c)))
 NLJMPTBL = 600
 CONV     =
+MATH     =
 # The installed newlib (the build tree's xgcc doesn't search it); the
 # compiler picks the multilib directory.
 NEWLIB  ?= $(HOME)/build/install/m68k-elfos9
@@ -258,9 +266,144 @@ check-l68:
 	@[ -z "$(MWLIB)" ] || { echo "== l68, Microware's clib.l"; \
 	  $(MAKE) --no-print-directory BUILD=$(BUILD)/l68-mw run-mw-l68; }
 
+# OS-9 itself: the Level 3 tests (mwtests/) built with -DREAL_OS9, which
+# adds checks needing system calls (memory, files, the math trap), as real
+# modules: Microware's cstart.r as the startup (rof2elf, with its __os9_*
+# symbols for the module header), GNU ld with ../l68cmp/mod.lds, elf2mod.
+# cdirun (CD-i Emulator's command runner, a Windows program, which runs
+# from WSL) copies each one with Kermit to a CD-i player or CD-i Emulator,
+# loads it and runs it; a test passes when it exits with status 0, its
+# mask of failed checks (from bit 1 on, as the OS-9 shell doesn't report a
+# status of 1), which cdirun -st writes as a Status line (its exit code may
+# lose all but the low 8 bits on the way to make).  The OS-9 shell must be
+# at its prompt, with kermit on its execution path and a writable current
+# directory, where the tests are copied.  A test with mwtests/NAME.status
+# must exit with the status given there instead (GGG:NNN, as cdirun writes
+# it): stkover, -mos9stkchk's overflow path.  Like check-mw, this needs MWLIB:
+#   make check-os9 MWLIB=DIR [CDIRUN=/mnt/c/path/to/cdirun.exe] [CDIRUN_FLAGS='-p term:duarta']
+CDIRUN       ?= cdirun.exe
+CDIRUN_FLAGS ?=
+OS9TESTS      = $(MWTESTS)
+
+$(BUILD)/os9/%: $(HERE)mwtests/%.c $(HERE)../l68cmp/mod.lds $(CC1) $(BUILD)/mw/cstart.o $(BUILD)/mw/clib.a \
+	$(BUILD)/elf2mod $$(wildcard $(HERE)mwtests/$$*.flags) $$(LIBGCC)
+	mkdir -p $(BUILD)/os9
+	$(GCC) -c -DREAL_OS9 $(or $(file <$(HERE)mwtests/$*.flags),$(CFLAGS_MW)) -o $@.o $<
+	$(TPREFIX)ld -q --no-check-sections -T $(HERE)../l68cmp/mod.lds -o $@.elf \
+	  $(BUILD)/mw/cstart.o $@.o $(BUILD)/mw/clib.a $(LIBGCC)
+	$(BUILD)/elf2mod -n $* $@.elf $@ > /dev/null
+	if [ -f $(HERE)mwtests/$*.status ]; then cp $(HERE)mwtests/$*.status $@.want; \
+	  else rm -f $@.want; fi
+
+# $(call os9-run,DIR,MODULES): runs the module files in DIR, each named
+# as its module, on OS-9.  For each one: the old file and module go first
+# (errors ignored), then copy, make it executable, load it from the
+# current directory and run it; it must exit with status 0, or the one in
+# DIR/MODULE.want.
+os9-run = cd $(1) && fail=0; for t in $(2); do \
+	  $(CDIRUN) $(CDIRUN_FLAGS) "unlink $$t" > /dev/null 2>&1; \
+	  $(CDIRUN) $(CDIRUN_FLAGS) "del $$t" > /dev/null 2>&1; \
+	  if $(CDIRUN) $(CDIRUN_FLAGS) -dc $$t > $$t.log 2>&1 \
+	    && $(CDIRUN) $(CDIRUN_FLAGS) "attr $$t -e -pe; load -d $$t" >> $$t.log 2>&1 \
+	    && { $(CDIRUN) $(CDIRUN_FLAGS) -t 60 -st $$t >> $$t.log 2>&1; \
+	         grep -q "^Status $$(cat $$t.want 2> /dev/null || echo 000:000)" $$t.log; }; \
+	  then echo "PASS: $$(basename $(1))/$$t"; else echo "FAIL: $$(basename $(1))/$$t"; \
+	    cat $$t.log; fail=1; fi; done; exit $$fail
+
+check-os9: $(OS9TESTS:%=$(BUILD)/os9/%)
+	@$(call os9-run,$(BUILD)/os9,$(OS9TESTS))
+
+# OS-9 itself, mixed: mixtests/mwside.c compiled by Microware C on OS-9,
+# mixtests/gccside.c by GCC, linked both by Microware's cc on OS-9 (through
+# elf2rof) and by GNU ld (through rof2elf), and run there; plus a build with
+# one deliberate mismatch, which must fail just that check.  See
+# mixtests/run.sh.  The same setup as check-os9; OS9_CCFLAGS goes to cc on
+# OS-9, for instance -t=/r512 for its temporary files.
+#   make check-os9mix MWLIB=DIR [CDIRUN=...] [CDIRUN_FLAGS=...] [OS9_CCFLAGS=...]
+OS9_CCFLAGS ?=
+
+check-os9mix: $(BUILD)/elf2rof $(BUILD)/rof2elf $(BUILD)/elf2mod $(BUILD)/mw/cstart.o $(BUILD)/mw/clib.a $(CC1)
+	@HERE=$(HERE) BUILD=$(BUILD) GCC="$(GCC)" TPREFIX=$(TPREFIX) CFLAGS_MW="$(CFLAGS_MW)" \
+	  CDIRUN="$(CDIRUN)" CDIRUN_FLAGS="$(CDIRUN_FLAGS)" OS9_CCFLAGS="$(OS9_CCFLAGS)" \
+	  CSTART=$(BUILD)/mw/cstart.o CLIB=$(BUILD)/mw/clib.a \
+	  MATHL=$(call mwfile,math.l) SYSL=$(call mwfile,sys.l) LIBGCC=$(LIBGCC) \
+	  sh $(HERE)mixtests/run.sh
+
+# OS-9 itself, Level 2: the check-mod modules (tests/ and modtests/, at
+# -O2, linked with the harness's crt0, which exits with F$Exit; smoke
+# writes with I$Write), run through cdirun like check-os9, but without
+# Microware's files.  The modules are copied without their .mod suffix.
+#   make check-os9mod [CDIRUN=...] [CDIRUN_FLAGS=...]
+OS9MODS = $(TESTS) $(MODTESTS)
+
+run-os9mod: $(TESTS:%=$(BUILD)/%.mod) $(MODTESTS:%=$(BUILD)/far/%.mod)
+	@mkdir -p $(BUILD)/os9mod
+	@for t in $(TESTS); do cp $(BUILD)/$$t.mod $(BUILD)/os9mod/$$t; done
+	@for t in $(MODTESTS); do cp $(BUILD)/far/$$t.mod $(BUILD)/os9mod/$$t; done
+	@$(call os9-run,$(BUILD)/os9mod,$(OS9MODS))
+
+check-os9mod:
+	@$(MAKE) --no-print-directory BUILD=$(BUILD)/mod-O2 \
+	  CFLAGS_T="-O2 -mpcrel -ma6rel -mos9call" run-os9mod
+
+# OS-9 itself, newlib: nltests/ built with -DREAL_OS9 as real programs,
+# with newlib's OS-9 runtime (libgloss: -specs=os9.specs, which brings
+# its startup, system calls and linker script), in both multilibs, and
+# run through cdirun like check-os9.  Needs the installed newlib (NEWLIB).
+#   make check-os9newlib [CDIRUN=...] [CDIRUN_FLAGS=...]
+NLDIR = $(NEWLIB)/lib/$(shell $(GCC) $(CONV) -print-multi-directory)
+
+$(BUILD)/os9nl/%: $(HERE)nltests/%.c $(CC1) $(BUILD)/elf2mod $$(NLLIBC) $$(LIBGCC)
+	mkdir -p $(BUILD)/os9nl
+	$(GCC) $(CONV) -specs=$(NEWLIB)/lib/os9.specs -B$(NLDIR)/ -L$(NLDIR) \
+	  -L$$(dirname $$($(GCC) $(CONV) -print-libgcc-file-name)) -isystem $(NEWLIB)/include \
+	  -O2 -DREAL_OS9 -Wl,--defsym,__jmptbl_size=$(NLJMPTBL) -Wl,--noinhibit-exec \
+	  -o $@.elf $< 2> $@.ld.log
+	$(BUILD)/elf2mod -n $* $@.elf $@
+
+run-os9newlib: $(NLTESTS:%=$(BUILD)/os9nl/%)
+	@$(call os9-run,$(BUILD)/os9nl,$(NLTESTS))
+
+$(BUILD)/os9m/%: $(HERE)os9tests/%.c $(CC1) $(BUILD)/elf2mod $$(NLLIBC) $$(LIBGCC)
+	mkdir -p $(BUILD)/os9m
+	$(GCC) $(CONV) $(MATH) -specs=$(NEWLIB)/lib/os9.specs -B$(NLDIR)/ -L$(NLDIR) \
+	  -L$$(dirname $$($(GCC) $(CONV) -print-libgcc-file-name)) -isystem $(NEWLIB)/include \
+	  -O2 -Wl,--defsym,__jmptbl_size=$(NLJMPTBL) -Wl,--noinhibit-exec \
+	  -o $@.elf $< -lm 2> $@.ld.log
+	$(BUILD)/elf2mod -n $* $@.elf $@
+
+run-os9math: $(BUILD)/os9m/fpmath $(BUILD)/os9m/fnmath
+	@$(call os9-run,$(BUILD)/os9m,fpmath fnmath)
+
+# OS-9 itself, -mos9math: os9tests/fpmath.c (not "math", the name of the
+# math module itself), the arithmetic, and fnmath.c, the math functions
+# (inline traps with -mos9math), with libgcc's soft-float routines and
+# libm, and with -mos9math (OS-9's math module, inline, and libos9math,
+# newlib's libgloss, for the rest) in both multilibs, and with
+# -ffinite-math-only, which makes the compares inline too; run like
+# check-os9newlib.
+#   make check-os9math [CDIRUN=...] [CDIRUN_FLAGS=...]
+check-os9math:
+	@echo "== floating point on OS-9, libgcc"; \
+	  $(MAKE) --no-print-directory BUILD=$(BUILD)/m-soft CONV= MATH= run-os9math || exit 1; \
+	  echo "== floating point on OS-9, -mos9math"; \
+	  $(MAKE) --no-print-directory BUILD=$(BUILD)/m-trap CONV= MATH=-mos9math run-os9math || exit 1; \
+	  echo "== floating point on OS-9, -mos9math -mos9call"; \
+	  $(MAKE) --no-print-directory BUILD=$(BUILD)/m-trap-os9call CONV=-mos9call MATH=-mos9math run-os9math || exit 1; \
+	  echo "== floating point on OS-9, -mos9math -ffinite-math-only"; \
+	  $(MAKE) --no-print-directory BUILD=$(BUILD)/m-trap-finite CONV= \
+	    MATH="-mos9math -ffinite-math-only" run-os9math
+
+check-os9newlib:
+	@echo "== newlib on OS-9, stack convention"; \
+	  $(MAKE) --no-print-directory BUILD=$(BUILD)/nl-stack CONV= run-os9newlib || exit 1; \
+	  echo "== newlib on OS-9, -mos9call"; \
+	  $(MAKE) --no-print-directory BUILD=$(BUILD)/nl-os9call CONV=-mos9call run-os9newlib
+
 clean:
 	rm -rf $(BUILD)
 
 .PHONY: all run run-mod run-l68 run-mw-l68 run-newlib check check-mw check-mod check-l68 \
-	check-newlib clean
+	check-newlib check-os9 check-os9mix check-os9mod run-os9mod \
+	check-os9newlib run-os9newlib check-os9math run-os9math clean
 .SECONDARY:

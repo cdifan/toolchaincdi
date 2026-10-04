@@ -5,7 +5,15 @@
    printf's %f go through OS-9's math trap handler, trap #15).  Doubles
    are still passed, and their placement checked with %x.
    Compiled with -mos9call -mbuiltin=os9call; main returns a bit mask of
-   the failed checks.  */
+   the failed checks.
+
+   Built with -DREAL_OS9 for OS-9 itself, it also checks what needs system
+   calls: malloc, file I/O and floating point.  The mask, at most 16 bits,
+   is the program's exit status there.  Either way the mask goes through
+   exit(), since Microware's cstart.r ignores what main returns; the
+   harness has the F$Exit system call it makes.  Text lines end in '\r', which is
+   OS-9's end of line in either compiler (GCC's '\n' is a line feed
+   without -mos9newline).  */
 
 /* Microware's clib is K&R C; these are its functions as it defines
    them (int and double arguments, not char or float).  */
@@ -13,10 +21,20 @@ extern int strlen (), atoi (), strcmp (), sprintf (), sscanf (), toupper ();
 extern long atol ();
 extern char *strcpy (), *strcat (), *index ();
 extern void qsort ();
+#ifdef REAL_OS9
+/* FILE pointers as char pointers, without Microware's stdio.h.  */
+extern char *malloc (), *fopen (), *fgets ();
+extern void free ();
+extern int fprintf (), fclose (), unlink ();
+extern double atof ();
+#endif
+extern void exit ();
 
 struct big { int a[40]; };
 
 static unsigned long fails;
+/* Checks are numbered from 1: the mask is the exit status on OS-9, whose
+   shell doesn't report a status of 1.  */
 static void check (int ok, int n) { if (!ok) fails |= 1UL << n; }
 
 /* Called back by Microware's qsort, with the OS-9 convention.  */
@@ -35,7 +53,7 @@ main (void)
   int i, v[6] = { 5, 3, 9, 1, 7, 2 };
   struct big x, y;
 
-  check (strlen ("hello") == 5, 0);
+  check (strlen ("hello") == 5, 1);
   check (atoi ("1234") == 1234, 1);
   check (strcmp ("abc", "abd") < 0 && strcmp ("b", "a") > 0, 2);
   strcpy (buf, "copy");
@@ -66,5 +84,37 @@ main (void)
      %x reads the halves, which avoids the math trap that %f needs.  */
   sprintf (buf, "%d %x %x %d", 7, 1.5, 9);
   check (eq (buf, "7 3ff80000 0 9"), 12);
-  return fails;
+#ifdef REAL_OS9
+  {
+    char *p = malloc (100), *q = malloc (2000), *fp;
+    check (p != 0 && q != 0 && p != q, 13);
+    if (p != 0 && q != 0)
+      {
+	strcpy (p, "heap");
+	q[1999] = 'x';
+	check (eq (p, "heap") && q[1999] == 'x', 13);
+      }
+    free (q);
+    free (p);
+
+    /* A file written and read back, with an OS-9 text line.  */
+    fp = fopen ("clibtst.tmp", "w");
+    check (fp != 0 && fprintf (fp, "%d %s\r", 99, "lines") > 0, 14);
+    if (fp != 0)
+      fclose (fp);
+    fp = fopen ("clibtst.tmp", "r");
+    check (fp != 0 && fgets (buf, sizeof buf, fp) == buf
+	   && eq (buf, "99 lines\r"), 14);
+    if (fp != 0)
+      fclose (fp);
+    unlink ("clibtst.tmp");
+
+    /* A double returned in d0:d1, and printed through the math trap.  */
+    sprintf (buf, "%.2f %.1f", atof ("2.5") * 2, -0.25);
+    check (eq (buf, "5.00 -0.2") || eq (buf, "5.00 -0.3"), 15);
+  }
+#endif
+  /* Microware's cstart.r ignores what main returns; exit makes the
+     F$Exit system call, which the harness has too.  */
+  exit (fails);
 }

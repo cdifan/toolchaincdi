@@ -3,7 +3,11 @@
    multilib.  Library calls both ways (qsort calls back), va_list passed
    to newlib (vsnprintf), setjmp/longjmp (assembly, in both conventions),
    with the registers longjmp restores, and malloc (through _sbrk,
-   defined here).  main returns a bit mask of the failed checks.  */
+   defined here).  main returns a bit mask of the failed checks.
+
+   With -DREAL_OS9 (make check-os9newlib), for OS-9 itself: linked with
+   -specs=os9.specs, whose libos9 has the system calls, and checking
+   output, a file written and read back, and the time as well.  */
 
 #include <setjmp.h>
 #include <stdarg.h>
@@ -11,7 +15,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
+#ifdef REAL_OS9
+#include <time.h>
+#include <unistd.h>
+#endif
 
+#ifndef REAL_OS9
 /* newlib is built without system calls; programs define them (here
    compiled with the same convention as the multilib that calls them).
    Only malloc's _sbrk does real work.  */
@@ -46,6 +55,7 @@ _sbrk (ptrdiff_t incr)
   heap_used += incr;
   return p;
 }
+#endif
 
 static int
 cmp_int (const void *a, const void *b)
@@ -234,6 +244,29 @@ main (void)
       free (p);
       free (q);
     }
+
+#ifdef REAL_OS9
+  /* Output, a file written and read back (line ends unchanged), and the
+     time.  */
+  if (printf ("newlib on OS-9\n") != 15 || fflush (stdout))
+    fail |= 128;
+  {
+    FILE *f = fopen ("nltest.tmp", "w");
+    if (!f || fprintf (f, "one\ntwo\n") != 8 || fclose (f))
+      fail |= 256;
+    f = fopen ("nltest.tmp", "r");
+    if (!f || !fgets (buf, sizeof buf, f) || strcmp (buf, "one\n")
+	|| !fgets (buf, sizeof buf, f) || strcmp (buf, "two\n")
+	|| fgets (buf, sizeof buf, f))
+      fail |= 256;
+    if (f)
+      fclose (f);
+    if (unlink ("nltest.tmp") || fopen ("nltest.tmp", "r"))
+      fail |= 256;
+  }
+  if (time (NULL) < 24L * 3600 * 365 * 30)
+    fail |= 512;
+#endif
 
   return fail;
 }

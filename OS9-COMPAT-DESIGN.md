@@ -1226,40 +1226,38 @@ listed in the `Dockerfile`, then configure GCC as in the `Dockerfile`
 
 ## 9. Emulator serial bridge
 
-Optional, but generally useful: a way for tools (and Claude) to send commands to an OS-9 shell
-running inside an emulator, such as [CD-i Emulator][cdiemu] (`cdiemu`) by CD-i Fan, and read its
-output through one of the emulated serial ports. `cdiemu` emulates CD-i hardware with OS-9
-running on it, and can run Microware tools such as native `cc` from a Microware disk image.
-The Windows version (`wcdiemu`) can connect each serial port to its terminal program
-(`winterm`) via Windows messages:
+Done: **`cdirun`**, a command-line client in the CD-i Emulator version 0.6.x tools, runs
+commands on the OS-9 shell of a CD-i player (over a COM port) or of [CD-i Emulator][cdiemu]
+(`cdiemu`) by CD-i Fan, where the shell runs on an emulated serial port, and copies files both
+ways. `cdiemu` emulates CD-i hardware with OS-9 running on it, and runs Microware tools such as
+the native `cc` from a Microware disk image.
 
 [cdiemu]: https://www.cdiemu.org
 
-| Message | Value | Use |
-|---|---|---|
-| `WM_TERMHOST` | `WM_USER + 0x100` | host → terminal: `wParam` = host id, `lParam` = host window |
-| `WM_TERMDATA` | `WM_USER + 0x101` | either way: `lParam` = `MAKELONG(char, TERMDATA_*)` |
-| `WM_TERMWND` | `WM_USER + 0x102` | terminal → emulator window: late binding (see below) |
-| `WM_COPYDATA` | — | strings, `dwData = TERMDATA_CHAR` |
+The Windows version (`wcdiemu`) connects each serial port to its terminal program (`winterm`)
+through its terminal protocol. `cdirun` attaches to such a port in the terminal's place: the
+emulator pauses the terminal window, mirrors the output to it and gives the port back
+afterwards, extensions of the protocol made for `cdirun`.
 
-`TERMDATA_*` codes: `NULL`, `CHAR`, `EXIT`, `BREAK`, `ERROR`, `SIGNAL`, `TITLE`.
+What the tests use:
+- `cdirun COMMAND...` sends a command line and writes its output until the shell prompts again.
+- `cdirun -dc FILE...` and `-uc FILE...` copy files to and from the current OS-9 directory with
+  the Kermit program on the disk (OS-9 Kermit 1.6), in image mode, or with `-te` as text, with
+  CR line ends on OS-9. This replaces the hex encoding once planned for binaries.
+- `cdirun -st` exits with the OS-9 exit status of the command line and writes it as a last line,
+  `Status GGG:NNN`. The shell reports a status only as `Error #GGG:NNN`, and not 0 or 1 at all;
+  `cdirun` runs the command line through a small helper module of its own (`runst`, built in),
+  which runs the command line and reports every status, which cdirun turns into its `Status`
+  line.
+- On OS-9, programs are run from memory: `attr NAME -e -pe; load -d NAME; NAME` (the shell
+  looks for programs only in memory and the execution directory). Microware's `cstart.r` ignores
+  what `main` returns, so a test reports through `exit()`.
 
-Binding works two ways:
-- **Early:** the emulator does `FindWindow("TermWndClass", title)`, or else launches
-  `winterm.exe /title …`.
-- **Late:** a terminal sends `WM_TERMWND` to the emulator window (class `CdiWndClass`), which
-  matches it to a serial port by window title.
+`make check-os9` and `make check-os9mix` in `test/abi-exec` (§11) run the Level 3 tests this way,
+and `check-os9mix` also compiles the Microware side on OS-9 itself.
 
-A bridge would be a hidden `TermWndClass` window with a fixed title, plus a command-line client
-that sends a command line and collects output until the OS-9 shell prompt returns. It could be
-written in C++ (Visual Studio) next to `winterm`, or in PowerShell/C#.
-
-Limitations:
-- `cdiemu` cannot yet mount a host directory as an OS-9 device (planned).
-- Files must travel over the serial line, and binary files such as `.r` need hex encoding.
-
-For compiler testing, the Windows-hosted Microware cross tools (§7) are the easier path. The
-bridge matters for running programs inside the emulator.
+Still missing: `cdiemu` cannot mount a host directory as an OS-9 device, so files travel over
+the serial line (about 300 bytes a second in the emulator).
 
 ## 10. Licensing and upstreaming
 
@@ -1478,12 +1476,18 @@ runs code.
     Microware C 3.2-style (first arguments in d0/d1), reading every argument correctly with `va_arg`
 - **GCC↔GCC:** `-mos9call` code calling itself, including through function pointers, mixed with
   non-os9call code (libcalls, member functions).
+- **On OS-9 itself:** `make check-os9mod CDIRUN=…` in `test/abi-exec` runs the `check-mod`
+  modules (`tests/` and `modtests/` at `-O2 -mpcrel -ma6rel -mos9call`) on an emulated CD-i 605
+  through `cdirun`, like `check-os9` (Level 3); all pass (2026-10-04). It needs none of
+  Microware's files. One thing learnt: `saves`' 40 KB frame ran off the data area into a bus
+  error (`000:102`) with `elf2mod`'s default 3 KB stack, which the harness never noticed, so
+  `crt0` asks for 48 KB.
 - This level gates implementation phases 3 (callee register saves) and 4 (return values).
 
 ### Level 3: real interoperability
 
-The final proof uses real Microware objects. It depends on `rof2elf` (§6), and ideally the serial
-bridge (§9) for automation.
+The final proof uses real Microware objects. It depends on `rof2elf` (§6), and on the serial
+bridge (§9, `cdirun`) for running on OS-9 itself.
 
 - Compile test modules with Microware C 3.2 (and Ultra C 2.5) to `.r`, convert them with `rof2elf`,
   link them with GCC `-mos9call` objects, convert with `elf2mod`, and run the result in CD-i
@@ -1495,6 +1499,70 @@ bridge (§9) for automation.
   `index` and `atol`; Microware's `qsort` calls back a GCC comparator; and GCC's own `memcpy`
   for a struct copy goes to `clib`'s (with `-mbuiltin=os9call`). Functions that make system calls
   (memory, I/O, floating point through the math trap) need the real OS-9 in CD-i Emulator.
+- **On OS-9 itself:** built with `-DREAL_OS9`, `mwtests/clib.c` also checks `malloc`/`free`, a
+  file written with `fprintf` and read back with `fgets` (an OS-9 line, ending in `'\r'`), and
+  `atof` returning a double in d0:d1, printed with `%f` through the math trap; `stkchk.c` checks
+  the stack against the process's own. Linked with the original `cstart.r` startup (GNU ld with
+  `test/l68cmp/mod.lds`, then `elf2mod`), copied to an emulated CD-i 605 and run there, both
+  exit with status 0 (2026-10-04). The failure mask is the exit status, so it fits in 16 bits.
+  `make check-os9 MWLIB=… CDIRUN=…` in `test/abi-exec` does it all: it builds the modules, and
+  `cdirun` (CD-i Emulator's command runner) copies them with Kermit, loads and runs them, and
+  reads the exit status. Two things learnt on the way: Microware's `cstart.r` ignores what
+  `main` returns (a program's status comes from `exit()`; the Level 2 harness now has the
+  `F$Exit` system call that `exit()` makes), and the OS-9 shell doesn't report an exit status
+  of 1 (error `000:001`, "Process has aborted"), so the masks start at bit 1.
+- **Mixed, on OS-9 itself:** `test/abi-exec/mixtests/mwside.c` (K&R) is compiled by Microware
+  C 3.2 on the CD-i 605 (`cc -r`), `gccside.c` by GCC `-mos9call`, and the two are linked by
+  Microware's `cc`/`l68` on OS-9 (the GCC object through `elf2rof`) and by GNU ld on the PC
+  (`mwside.r` copied up and through `rof2elf`, with `math.l` for C 3.2's `_T$DCmp`), then run
+  there. GCC calls 21 Microware functions (int, double, pointer, char/short/unsigned,
+  float-as-double, struct arguments in every position; char, short, unsigned char, pointer,
+  float, double and long returns), which check what arrived; Microware code calls GCC
+  functions back, directly, through a pointer and a variadic one (positional `va_arg`), and
+  passes float variables, which C 3.2 widens to double (`_T$FtoD`), to GCC functions declared
+  with `double` ("Widened prototypes", §4), first in d0:d1 and after an int on the stack. Both
+  links pass. A build declaring one function's float argument unwidened must fail exactly
+  that check, and does. `make check-os9mix MWLIB=… CDIRUN=… OS9_CCFLAGS=-t=/r512`; GCC's
+  side needs no libgcc, so `l68` links it alone. Struct returns are left out (C 3.2's static
+  buffer and `-mos9call`'s a0 don't mix, §4).
+- **The `-mos9stkchk` overflow path, on OS-9 itself:** `mwtests/stkover.c` recurses until
+  `cstart.r`'s `_stkcheck` stops it with "**** Stack Overflow ****"; `check-os9` expects its
+  exit status from `mwtests/stkover.status`. That status is 2 (`000:002`), not the 0x101
+  `_stkcheck` pushes: Microware's `_exit` takes its argument in d0, which still holds the path
+  number of the message's `I$WritLn`. A Microware quirk, which the test records.
+- **newlib, on OS-9 itself:** `make check-os9newlib` builds `nltests/` with `-DREAL_OS9` and
+  newlib's OS-9 runtime (`-specs=os9.specs`, §12 item 5) in both multilibs and runs it there:
+  besides the Level 2 checks (stdio formatting, `qsort` callbacks, `va_list`, `malloc`,
+  `setjmp`/`longjmp`, and d2-d7/a2-a5 after `longjmp`), output, a file written and read back,
+  and the time. All pass (2026-10-04).
+- **`-mos9math`, on OS-9 itself:** `make check-os9math` runs `os9tests/fpmath.c` (exact results
+  bit for bit, comparisons, conversions, NaNs) and `os9tests/fnmath.c` (`sin` ... `pow`, within
+  1E-13) with libgcc and libm, and with `-mos9math` in both multilibs. All pass (2026-10-04).
+  With `-mos9math`, GCC defines `__OS9MATH__` and newlib's `math.h` includes
+  `<machine/os9math.h>`, whose `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `log`, `log10`,
+  `sqrt`, `exp` and `pow` are inline traps (`gnu_inline`, so libm's stay for their addresses),
+  with the precision 1E-14 in d2:d3 (`pow`: d4:d5), as C 3.2's own `clib.l` passes it (OS-9
+  Technical Manual, chapter 6); `fnmath` shrinks from 60 KB to 38 KB. On the CD-i 605 `tan`,
+  `acos` and `T$DAdd` change d2/d3, which the manual neither promises nor forbids (it promises
+  unchanged registers only for `T$DCmp`, d0-d3, and `T$FCmp`, d0/d1). The ROM's `math` module
+  (edition 13, CRC `46c5dc`, the same in all 59 player ROMs listed, byte-identical in the 23
+  extracted), read in a disassembly (2026-10-04): `T$DAdd` and `T$DSub` compute in d2:d3 and
+  save nothing (`T$DSub` first flips d2's sign); `Tan` returns with cos(x) in d2:d3, `Acs` with
+  π/2; `T$DMul` and `T$DDiv` save d2-d7; the compares write no register; the float operations
+  share a wrapper that saves and restores d2-d4 (d1 changes); the conversions save d2 (and d3
+  where they use it); `Sin`, `Cos` and `Atn` save d2-a3. Microware C 3.2 assumes none of it:
+  with `-x`, before and after `o68`, it reloads d2:d3 before every double operation and keeps
+  register variables in d4-d7 only. GCC's inline traps likewise count d2:d3 as destroyed by
+  every double operation and conversion, which the manual allows (the conservative choice, kept
+  on purpose), and `math.h`'s inline functions declare the precision registers read-write. As in
+  Microware C, errors (division by zero, overflow, 0/0, out-of-range conversions, domain
+  errors) raise TRAPV and end the program (`000:107`): the manual says the math module returns
+  ±infinity or 0 before trapping, so an `F$STrap` TRAPV handler resuming after the `trapv`
+  could give IEEE-like results, which is left for later. `pow(0, -1)` returns 0.
+- **A CD-i Emulator difference found on the way:** `move.l %sp,-(%sp)` pushes the decremented
+  stack pointer on CD-i Emulator's 68070, the original one on the 68000 (and in the Level 2
+  harness). Whether a real 68070 does the same is open; the tests avoid the instruction (GCC
+  doesn't emit it).
 - **Linking compared with `l68`:** `test/l68cmp/run.sh` links a test program with Microware's
   linker (Ultra C's `l68`, or Microware C 3.2's under vDos via `vdos.bat`) and the same ROFs
   with `rof2elf`, GNU ld and `elf2mod`, and compares the program and `.stb` symbol modules (§6).
