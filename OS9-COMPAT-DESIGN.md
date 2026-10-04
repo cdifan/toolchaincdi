@@ -19,7 +19,7 @@ Contents:
 5. [How dependent is the toolchain on ELF?](#5-how-dependent-is-the-toolchain-on-elf)
 6. [ROF interoperability: `rof2elf` and `elf2rof`](#6-rof-interoperability-rof2elf-and-elf2rof)
 7. [Microware tools available for testing](#7-microware-tools-available-for-testing)
-8. [Build environment](#8-build-environment)
+8. [Build and host environments](#8-build-and-host-environments)
 9. [Emulator serial bridge](#9-emulator-serial-bridge)
 10. [Licensing and upstreaming](#10-licensing-and-upstreaming)
 11. [Test plan](#11-test-plan)
@@ -1198,7 +1198,7 @@ project, so it's a research item for later, after `rof2elf` and `.stb` support.
 - **Cross-checking compiled libraries:** disassemble a few functions from the CD-i `clib.l` with
   `rdump`/`deasm` to confirm the conventions independently.
 
-## 8. Build environment
+## 8. Build and host environments
 
 GCC cannot be built with MSVC (Visual Studio). It needs a POSIX shell environment (configure,
 GNU make, sed/awk, m4, flex/bison) and a GCC-compatible host compiler. Git for Windows' Git Bash
@@ -1223,6 +1223,38 @@ Estimates on a 4-core machine under WSL2:
 Setup plan: install WSL2 with Ubuntu, create a sudo-capable user, install the `apt` dependencies
 listed in the `Dockerfile`, then configure GCC as in the `Dockerfile`
 (`--target=m68k-elfos9 --with-cpu=68000 --enable-languages=c …`).
+
+### Windows as a host (goal)
+
+The toolchain is to run natively on Windows too, without WSL or Docker: a Windows user should be
+able to download it and install it. Decided 2026-10-04:
+
+- **Built as a Canadian cross** on Linux, in the same Docker image as the Linux toolchain:
+  binutils, GCC and the host tools configured with `--host=x86_64-w64-mingw32` (the
+  distribution's mingw-w64 cross compilers), with the Linux-hosted `m68k-elfos9` compilers built
+  first for the target libraries. The simplest way: one build environment, and faster than
+  building on Windows.
+- **A native MSYS2 build must work too** (MSYS2 with mingw-w64 GCC, option 2 above), so the
+  Windows binaries don't depend on the Linux build alone. Slower, but without cross-specific
+  steps.
+- **The target libraries** (newlib with libgloss's OS-9 runtime and `libos9math`, libgcc, both
+  multilibs) are the same files on any host; the Windows packages take them from the Linux build.
+- **Per component:** binutils and GCC build with mingw-w64 as they are. `elf2mod` needs BFD, so
+  a mingw-w64 `libbfd` from the same binutils build. `rof2elf` and `elf2rof` are plain C. The
+  front ends (`m68k-os9-xcc`, and `m68k-os9-l68`, `m68k-os9-libgen`, `m68k-os9-ucc` to come) are
+  C on libiberty, which runs programs through `pex_one` as GCC's driver does, with what the hosts
+  do differently in one file (`hostsys.c` in `cdifan/elf2mod`): drive letters, file names
+  regardless of case, replacing a file (`MoveFileEx`), the temporary directory. That is why
+  they're C rather than shell scripts; `m68k-os9-gcc` is still a shell script and is to be
+  rewritten in C on the same code.
+- **The `m68k-os9-` names** are symbolic links on Linux; on Windows they become copies or small
+  launchers.
+- **The tests stay POSIX** (Makefiles, shell scripts, Musashi, DejaGnu): on Windows they run
+  under WSL or MSYS2, which is fine for development; users don't need them. Testing already
+  crosses over the other way: Windows programs (`cdirun.exe`, Ultra C's `l68.exe`) are called
+  from WSL.
+- **Distribution:** in the end CI builds the Windows binaries as an artifact next to the Linux
+  image, packaged for download and install: a zip at first, perhaps a `.msi` installer later.
 
 ## 9. Emulator serial bridge
 
@@ -1631,31 +1663,86 @@ test/
    running them (§4).
 5. **`elf2rof`:** done, in `cdifan/elf2mod` (`elf2rof.md` there); tested by round trips and by
    running GCC code linked with `l68` (§11). The deferred items:
-   - **usability: building a module in one step.** Today it takes `-mpcrel -ma6rel` on every
-     compile, a hand-made startup file (or `cstart.r` through `rof2elf`), a hand-made linker
-     script, `ld -q` with `--no-check-sections` or `--noinhibit-exec --defsym __jmptbl_size=N` for
-     large programs, `elf2mod`, and the system calls newlib needs, written by hand. Wanted:
-     - driver specs for `m68k-elfos9`: `-mpcrel -ma6rel` by default, and a link spec adding `-q`,
-       the right options and a linker script installed with the toolchain
-     - a small OS-9 runtime shipped with it: a startup file and newlib's system calls (`_write`,
-       `_read`, `_sbrk`, `_exit`, ...) through OS-9 system calls (`trap #0`: `I$Write`,
-       `F$SRqMem`, `F$Exit`, ...), in both multilibs, so `printf` and `malloc` work on OS-9
-     - the step from the linked ELF to the module: GCC's driver can't run a tool after linking,
-       so a thin wrapper (compile, link, `elf2mod`) or a Makefile fragment
-     - a recipe or script for converting one's own copy of Microware's libraries (`rof2elf`,
-       `ranlib`), which can't be shipped
-   - **a pragma for Microware declarations:** `#pragma os9call push` / `#pragma os9call pop`, giving
-     every function declared in between the `os9call` attribute (through `m68k_insert_attributes`,
-     as rs6000 does with `#pragma longcall`). Backend only, for C and C++ alike. It doesn't replace
-     `_OS9PROTO` in headers shared with Microware C 3.2, which needs the macro to hide the
-     prototypes anyway; it's for prototyped headers only GCC reads (Ultra C's ANSI headers, one's
-     own), which can then be wrapped whole, around an `#include`, without editing each declaration
+   - **usability: building a module in one step:** done (2026-10-04), apart from the last point:
+     - **newlib's OS-9 runtime,** in `libgloss/m68k` of `cdifan/newlib-cygwin`, built for
+       `m68k-elfos9` in both multilibs: `os9-crt0.o` (argc/argv from the parameter string, with
+       the module's name as `argv[0]`; constructors; `exit(main(...))`), `libos9.a` (newlib's
+       system calls through OS-9's: `I$Read`/`I$ReadLn`, `I$Write`/`I$WritLn`,
+       `I$Open`/`I$Create`, `I$Close`, `I$Seek`, `I$GetStt`/`I$SetStt`, `I$Delete`, `F$Exit`,
+       `F$ID`, `F$Send`, `F$Time`), `os9.ld`, and `os9.specs`, which adds `-mpcrel -ma6rel`, the
+       startup, `-q --no-check-sections -Tos9.ld` and `-los9`. Opt-in (`-specs=os9.specs`) rather
+       than driver defaults, so code built without it stays as before (Level 0). On terminals (SCF
+       paths) a line feed is written as a carriage return, with `I$WritLn`, and read back as a
+       line feed; files are unchanged. The heap lies between the data and the stack: newlib's
+       `malloc` needs it contiguous and growing upwards, and `F$SRqMem` hands out blocks from the
+       top of memory down. The module reserves `__os9_heap` bytes (16 KB) and the shell's `#size`
+       modifier adds more (`prog #64k`). The module header comes from `__os9_*` symbols that
+       `os9.ld` provides with defaults (8 KB of stack, edition 1), which a program or `--defsym`
+       overrides; `--defsym __jmptbl_size=N` reserves `elf2mod`'s jump table.
+     - **`m68k-os9-gcc`,** in `cdifan/elf2mod` (with `m68k-os9-` links to the binutils):
+       compiles and links with `-specs=os9.specs`, then runs `elf2mod`; a program too large for
+       16-bit calls is linked again with the jump table size `elf2mod` asks for; `-Wm,` passes
+       options to `elf2mod`. GCC's driver can't run a tool after linking, hence the wrapper.
+     - tested on an emulated CD-i 605 in both multilibs (`make check-os9newlib`, §11)
+     - still wanted: a recipe or script for converting one's own copy of Microware's libraries
+       (`rof2elf`, `ranlib`), which can't be shipped
+   - **a pragma for Microware declarations** (queued, 2026-10-04): `#pragma os9call push` /
+     `#pragma os9call pop`, giving every function declared in between the `os9call` attribute
+     (through `m68k_insert_attributes`, as rs6000 does with `#pragma longcall`). Backend only, for
+     C and C++ alike. It doesn't replace `_OS9PROTO` in headers shared with Microware C 3.2, which
+     needs the macro to hide the prototypes anyway; it's for prototyped headers only GCC reads
+     (Ultra C's ANSI headers, one's own), which can then be wrapped whole, around an `#include`,
+     without editing each declaration
+   - **sanitized header files** (queued, 2026-10-04): our own headers declaring the Microware
+     library functions (OS-9 system call bindings such as `create` and `_errmsg`, CD-i's
+     libraries), written from the documentation rather than copied from Microware's `DEFS`, so
+     they can ship with the toolchain. They use `_OS9PROTO` ("Headers for Microware libraries",
+     §4), so the same file serves GCC (with the `os9call` attribute, with or without `-mos9call`)
+     and Microware C 3.2 (K&R declarations); widened parameter types only; no clashes with
+     newlib's own declarations. Tested by compiling them with both compilers, and by the run-time
+     test for `_OS9PROTO` declarations used without `-mos9call` listed below
+     - **what they must provide:** more than structure layouts (module headers, process and path
+       descriptors, path options; for CD-i the DCP, FCT, CDFM and UCM structures). Also the
+       constants and macros, probably the bulk (error codes, `I$GetStt`/`I$SetStt` codes, signal
+       codes, module types and attributes, access and permission bits, CD-i drawmap and display
+       control codes), the typedefs those use, and the declarations of functions that don't
+       return `int` (in K&R code an undeclared function returns `int`; under `os9call` a
+       declaration also carries the attribute)
+     - **a compatibility check against Microware's headers,** copying nothing: a generator lists
+       every macro, structure member and declaration in our headers; a test program compares, for
+       each name, our value, size or offset with what Microware's header gives, compiled by
+       Microware C 3.2 itself (under vDos or on OS-9, so layouts are exactly `c68`'s) and by GCC
+       (`-std=gnu89`). It reports mismatches, and names Microware's headers have and ours lack, by
+       name only. A test target like `check-mw`, with `MWDEFS=` pointing to the user's own copy,
+       skipped without one
+     - **what the documentation doesn't cover** (likely plenty): for each name the check finds
+       only in Microware's headers, either (1) leave it out, and whoever needs it includes
+       Microware's header through the pragma wrapper; (2) establish it ourselves first, by
+       disassembly or by running code, write it into our own documentation, and derive the header
+       from that; or (3) mark it as found by the check only and hold it back from the shipped
+       headers until there is a source of our own. Names, values and layouts needed for
+       interoperability are generally treated as facts rather than expression, but Microware
+       enforces its rights (§7), so the check only reports, and our own documents are the source
+     - **two layers:** the pragma wrapper (above) for users who have Microware's headers, around
+       an `#include` of their own copy; it copies nothing and covers the undocumented parts, but
+       gives K&R declarations without argument checking, and Microware's `stdio.h` and friends
+       clash with newlib's, so only OS-9- and CD-i-specific headers can be wrapped. The sanitized
+       headers for users who don't have them. `m68k-os9-xcc` needs neither: it uses the user's
+       `CDEF` headers, as Microware's `xcc` does
+     - **open, not decided yet:** (a) the scope: the OS-9 system interface first (system calls,
+       error codes, module and descriptor structures, from the Technical Manual), then CD-i, or
+       CD-i from the start; (b) which documentation counts as a source: the Microware manuals
+       (local copies with the ICDIA material), and for CD-i the Green Book and the CD-RTOS
+       manuals, and whether anything else is included or excluded; (c) the policy for undocumented
+       items, for instance (2) for what CD-i programs use and (1) for the rest
    - porting the fork to GCC 17 (§2)
+   - **native Windows binaries** (§8, "Windows as a host"): the Canadian cross in the Docker
+     build, a working MSYS2 build, a mingw-w64 `libbfd` for `elf2mod`, `m68k-os9-gcc` in C,
+     launchers for the `m68k-os9-` names, then a CI artifact (a zip, perhaps a `.msi` later)
    - enabling C++ in the toolchain build (`--enable-languages=c,c++`); the C++ parts of
      implementation phase 1 (mangling) and the C++ Level 1 tests apply once it's enabled
    - building libstdc++ with `-mos9call` (newlib is done, §4 "Libraries"), with `stackcall` on
      the unwinder interfaces
-   - the emulator serial bridge
    - the assembler's default CPU (§6, "Branches within a function"): the README now documents
      `-m68000 --pcrel` for hand-written assembly; making the binutils build default to the 68000
      remains an option
@@ -1665,17 +1752,78 @@ test/
      avoid it (FPU registers first, a1 last); interrupt handlers are left unchanged to keep code
      built without the flag identical
    - **features without a run-time test** (an independent review): FPU register saves under
-     `-m68881`; `os9call` and `_OS9PROTO` declarations used without `-mos9call`; char, short,
-     float and pointer arguments from a Microware-style caller; odd-sized structs of 2, 5, 6
-     and 7 bytes (1 and 3 are tested); `long double` and `_Complex` on the stack and returned
-     via a0; struct return through a function pointer; `main` receiving argc/argv in d0/d1; the
-     `-mos9stkchk` overflow path (it and `-mbuiltin=os9call` only run with Microware's
-     libraries); the exclusion of interrupt handlers; d2-d7/a2-a5 after `longjmp`; the
-     68881 `setjmp`/`longjmp` variants (there's no FPU multilib). CI runs no tests.
+     `-m68881`; `os9call` and `_OS9PROTO` declarations used without `-mos9call`; odd-sized
+     structs of 2, 5, 6 and 7 bytes (1 and 3 are tested); `long double` and `_Complex` on the
+     stack and returned via a0; struct return through a function pointer; the exclusion of
+     interrupt handlers; the 68881 `setjmp`/`longjmp` variants (there's no FPU multilib). CI
+     runs no tests. Since tested on OS-9 (2026-10-04, §11): float variables passed by a
+     Microware caller (widened to double), the `-mos9stkchk` overflow path, and d2-d7/a2-a5
+     after `longjmp` (also in the Level 2 harness).
    - **no FPU multilib:** the multilibs are the default and `-mos9call`, both for the 68000, so
      `-m68020 -m68881` programs link the 68000 newlib (soft-float, and the non-68881
      `setjmp`). A 68020/68881 multilib would follow `t-mlibs`' CPU multilibs, which `t-elfos9`
      replaces
+6. **Microware `cc` options without an equivalent.** Most of the native `cc`'s options (as on the
+   CD-i 605's disk, edition #44) map onto GCC, `elf2rof` or `elf2mod` options: `-A` is `-S`,
+   `-R` is `-c` (with `elf2rof` for a ROF), `-N=` is `elf2mod -n`, `-E=` is `elf2mod -e`, `-M=`
+   is `elf2mod -s`, `-NL` is `-nostdlib`, `-G` is `-g` (with `elf2mod -g` for the `.stb`, not the
+   `.dbg`), `-J` is `elf2mod` building `_jmptbl` only when needed, `-S` is the default (stack
+   checking is opt-in, `-mos9stkchk`), and the 68000/68020/68881 choices are `-m68000`,
+   `-m68020` and `-m68881`, and `-X` is now `-mos9math`. The others have none:
+   - **`-X`, floating point through the math module** (now `-mos9math`). Without `-X`,
+     Microware C calls the floating-point routines of `math.l` (`_T$DCmp` and the like); with it, it
+     traps to OS-9's math module (`trap #15`), which a CD-i player has in ROM. Microware code
+     compiled either way links with GCC code (Level 3 links `math.l` through `rof2elf`). GCC's own
+     floating point is libgcc's soft-float (`lb1sf68`), in the program, unless **`-mos9math`**
+     (2026-10-04): it links `libos9math` (newlib's `libgloss/m68k`) before libgcc, whose versions of
+     the soft-float entry points (`__adddf3` ... `__divsf3`, the comparisons, `__unord*`, and the
+     conversions between float, double, long and unsigned long) call the math trap, and a
+     constructor links the handler (`F$TLink`), as `cstart.r` does on the first trap. The
+     convention, from C 3.2's `-X` code (native `cc -a -x` on the CD-i 605): `trap #15` and the
+     function code (`T$DAdd` = 14 ... from `funcs.a`), doubles in d0:d1 and d2:d3, floats in d0 and
+     d1, the result in d0:d1 or d0, a comparison's in the condition codes; C 3.2 does float
+     arithmetic in double. The math module knows no NaNs, so `libos9math`'s comparisons check for
+     them; libgcc's exception flags (`_fpCCR`) aren't kept. `make check-os9math` (§11). The 64-bit
+     conversions stay in libgcc. **Inline traps** (2026-10-04): without an FPU, `-mos9math` makes
+     GCC emit the traps itself, as C 3.2 does with `-X`, instead of calling the soft-float entry
+     points: the backend's float expanders (`add`, `sub`, `mul`, `div`, the conversions between
+     float, double, long and unsigned long, and `cbranch`) load the operands into fixed registers
+     and emit `trap #15` and the function code, with d1 and d2:d3 as clobbers (see §11 for why
+     d2:d3). Compares are the math module's (`T$DCmp`, `T$FCmp`) whether or not NaNs are honoured,
+     as in Microware C: the module knows no NaNs, and its errors end the program rather than make
+     one, so NaNs only come from outside (bit patterns, `nan()`); only `isnan` and `isunordered`
+     (ORDERED and UNORDERED) call libgcc's `__unord<mode>2`. With an FPU (`-m68881`) the FPU is used
+     and `-mos9math` changes nothing. `libos9math`'s entry points remain for code that still calls
+     them (code compiled without `-mos9math`, and libgcc's own internal calls). Ultra C's `-x` is
+     different: it emits 68881 instructions for an F-line emulator. In C 3.2, `xcc -bp` shows what
+     `-X` is: without it, the driver gives `c68` `-t`, which turns each trap into a call of
+     `math.l`'s `_T$DAdd` and the like, and links `clibn.l` and `math.l`; with it, `c68` emits the
+     `tcall`s and the driver links `clib.l`. The cross `xcc -a -x` and the native `cc -a -x` give
+     identical assembly.
+   - **all-long offsets** (`-K=…L`, `-TP=…DL`/`…CL`): a6-relative data and code references as
+     32-bit offsets for a whole program. GCC covers large programs per object, with the
+     `remote` attribute for data beyond 64 KB and `elf2mod`'s jump table for far calls (§6),
+     but has no blanket long mode; `-mxgot`-style long data offsets would be its counterpart.
+   - **`-I`, linking with `cio`:** the shared C I/O module, whose `cio.l` stubs replace the
+     I/O in `clib.l`, so programs share one copy of stdio. Probably just a matter of linking
+     `cio.l` (converted with `rof2elf`) before `clib.l`, and of `cio` being in memory, as it is
+     on the CD-i 605; untested.
+   - **`-BG`, adhesive object modules,** and **`-TO=OS9K`** (OS-9000), which don't apply.
+
+   The DOS cross compiler of C 3.2 (`xcc`) has the same options as the native `cc`, plus
+   `-TP=CPU32`. Like the native `cc` (edition #44), its driver predefines `_OSK`, `_MPF68K` and
+   `_BIG_END` for `cpp` (and `_MPF68020` or `_MPFCPU32`, and `_FPF881` with the 68881, which
+   `-TP=020` always implies: `xcc -bp` shows `cpp -d_OSK -d_FPF881 -d_MPF68K -d_MPF68020 -d_BIG_END`
+   and `c68020 -t881` for it, and `cpp -d_OSK -d_MPF68K -d_BIG_END` by default); `cpp` itself
+   predefines `OSK` and `mc68000`. (`-d_OS9` in its tables is `-TO=OS9`'s, 6809 OS-9.) Ultra C 2.5
+   in compat mode defines `OSK`, `_OSK`, `_MPF68K`, `_BIG_END`, `mc68000`, `_UCC` and its revision,
+   and `_FPF881` even for the 68000. Since 2026-10-04 GCC on `m68k-elfos9` predefines the same as C
+   3.2 (`OSK` also as `__OSK`/`__OSK__`, and only those in strict ISO C, like `mc68000`), so
+   Microware's `stdio.h`, which tests `OSK`, works unchanged. Ultra C 2.5's `xcc -mode=compat` takes
+   the same options in lower case (`-x` "use math trap handler", `-i` "shared trap handler/library",
+   `-k=…`); in its own mode the same choices are `-tp=CPU,fp|sc|lc|sd|ld` (`fp` a static
+   floating-point library instead of the trap; 32-bit code references `lc` are *its* default, 16-bit
+   data references `sd`), `-i`, and `-c` (constant pointers in the code area).
 
 ### Known minor faults and open issues
 
