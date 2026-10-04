@@ -1432,9 +1432,11 @@ runs code.
 - **Harness:** a small host program built around the Musashi 68000 CPU emulator library
   (permissively licensed, included as a submodule). It loads a linked test image (ELF, no OS), sets
   up a stack and a6 (for `-ma6rel` code), runs it from its entry point, and reports the exit
-  status the test writes to an I/O port. With `-m` it loads an OS-9 module as OS-9 does (header
-  parity and CRC checked). The assembly stubs below fill registers with marker values and check
-  them around calls.
+  status. It emulates the few OS-9 system calls the tests make (`trap #0`): `F$Exit`, with
+  which the startup (`crt0`) exits with `main`'s result, and `I$Write`/`I$WritLn` on the
+  standard paths, so the same images also run on OS-9 itself (below). With `-m` it loads an
+  OS-9 module as OS-9 does (header parity and CRC checked). The assembly stubs below fill
+  registers with marker values and check them around calls.
 - **Microware side:** short hand-written GNU-syntax assembly stubs reproduce the exact call and
   return sequences of Microware C 3.2 (taken from `testos9c-cc32.a`), and for struct return those
   of Ultra C 2.5 (from `testos9c-ucc25.a`). They let the harness check:

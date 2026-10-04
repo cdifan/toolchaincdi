@@ -138,7 +138,7 @@ $(BUILD)/elf2mod: $(HERE)../../src/elf2mod/elf2mod.c
 $(BUILD)/%.mod: $(BUILD)/%.elf $(BUILD)/elf2mod
 	$(TPREFIX)ld -q --no-check-sections -T $(HERE)abi.lds -o $(BUILD)/$*.qelf \
 	  $(BUILD)/crt0.o $(BUILD)/$*.o $(BUILD)/$*-stubs.o $(BUILD)/support.o $(LIBGCC)
-	$(BUILD)/elf2mod -g $(BUILD)/$*.qelf $@ > /dev/null
+	$(BUILD)/elf2mod -g -n $* $(BUILD)/$*.qelf $@ > /dev/null
 
 $(BUILD)/far/%.mod: $(HERE)modtests/%.c $(HERE)modtests/%.S $(HERE)crt0.S $(HERE)support.S $(HERE)abi.lds $(CC1) $(BUILD)/elf2mod \
 	$$(LIBGCC)
@@ -151,7 +151,7 @@ $(BUILD)/far/%.mod: $(HERE)modtests/%.c $(HERE)modtests/%.S $(HERE)crt0.S $(HERE
 	  --defsym __jmptbl_size=$(JMPTBL) -T $(HERE)abi.lds -o $(BUILD)/far/$*.elf \
 	  $(BUILD)/far/crt0.o $(BUILD)/far/$*.o $(BUILD)/far/$*-stubs.o \
 	  $(BUILD)/far/support.o $(LIBGCC) 2> $(BUILD)/far/$*.ld.log
-	$(BUILD)/elf2mod $(BUILD)/far/$*.elf $@
+	$(BUILD)/elf2mod -n $* $(BUILD)/far/$*.elf $@
 
 run-mod: $(BUILD)/abirun $(TESTS:%=$(BUILD)/%.mod) $(MODTESTS:%=$(BUILD)/far/%.mod)
 	@fail=0; for t in $(TESTS:%=$(BUILD)/%.mod) $(MODTESTS:%=$(BUILD)/far/%.mod); do \

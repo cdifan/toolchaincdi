@@ -10,8 +10,11 @@
    points a6 at DATA_BASE + 0x8000, sets up a stack, and runs from the
    entry point.  The image reports through two I/O addresses: a byte
    written to IO_PUTCHAR is printed, and a long written to IO_EXIT ends
-   the run with that value as the exit status.  An exception (illegal
-   instruction, address error, ...) or running too long fails the run.
+   the run with that value as the exit status.  Of OS-9's system calls
+   (trap #0 and a function code), only F$Exit is there: it ends the run
+   with the status in d1.w, as Microware's exit() calls it.  Any other
+   exception (illegal instruction, address error, another system call, ...)
+   or running too long fails the run.
 
    With -m, the file is an OS-9 module instead (elf2mod output): it's
    loaded at MOD_BASE, its initialized data copied to DATA_BASE and its
@@ -35,6 +38,14 @@
 #define MOD_BASE    0x400000		/* where an OS-9 module goes (-m) */
 #define STACK_TOP   0xE00000
 #define VECTOR_TRAP 0xF00100		/* all exception vectors point here */
+#define VECTOR_OS9  0xF00180		/* except trap #0's: OS-9 system calls */
+#define TRAP0_VEC   32			/* trap #0 */
+#define OS9_F_EXIT  0x06		/* F$Exit's function code */
+#define OS9_I_WRITE 0x8A		/* I$Write's */
+#define OS9_I_WRITLN 0x8C		/* I$WritLn's */
+#define OS9_E_BPNUM 0xC9		/* E$BPNum, bad path number */
+#define OP_RTE      0x4E73
+#define OP_NOP      0x4E71
 #define IO_PUTCHAR  0xF00000
 #define IO_EXIT     0xF00004
 #define MAX_STEPS   100000000L
@@ -84,6 +95,77 @@ fail (const char *msg, unsigned address)
   m68k_end_timeslice ();
 }
 
+static void put32 (unsigned address, unsigned long value);
+
+/* An OS-9 system call: trap #0, followed by its function code, which the
+   PC in the exception frame points at (the same in the 68000's and the
+   68040's frames).  F$Exit ends the run with the status in d1.w;
+   I$Write and I$WritLn write to standard output (path 1) or standard
+   error (path 2), d1.l bytes from a0, and set d1.l to that number.  A call
+   that returns does so as OS-9's do: past the function code, with the
+   carry flag clear, or set with the error code in d1.w.  Returns the
+   opcode for the CPU to execute at the trap vector: rte for a call that
+   returns, otherwise nop.  */
+static unsigned
+os9_call (void)
+{
+  unsigned sp = m68k_get_reg (NULL, M68K_REG_A7);
+  unsigned pc = get32 (mem + map (sp + 2));
+  unsigned code = get16 (mem + map (pc));
+  unsigned d1 = m68k_get_reg (NULL, M68K_REG_D1);
+  unsigned sr = get16 (mem + map (sp)) & ~1;
+
+  switch (code)
+    {
+    case OS9_F_EXIT:
+      exit_status = d1 & 0xFFFF;
+      done = 1;
+      m68k_end_timeslice ();
+      return OP_NOP;
+
+    case OS9_I_WRITE:
+    case OS9_I_WRITLN:
+      {
+	unsigned path = m68k_get_reg (NULL, M68K_REG_D0) & 0xFFFF;
+	unsigned a0 = m68k_get_reg (NULL, M68K_REG_A0);
+	unsigned i;
+
+	if (path != 1 && path != 2)
+	  {
+	    m68k_set_reg (M68K_REG_D1, (d1 & ~0xFFFF) | OS9_E_BPNUM);
+	    sr |= 1;
+	    break;
+	  }
+	fflush (stdout);
+	for (i = 0; i < d1; i++)
+	  fputc (mem[map (a0 + i)], path == 1 ? stdout : stderr);
+	fflush (path == 1 ? stdout : stderr);
+	break;
+      }
+
+    default:
+      fprintf (stderr, "abirun: OS-9 call 0x%02X not emulated\n", code);
+      fail ("system call", pc - 2);
+      return OP_NOP;
+    }
+
+  /* Return past the function code.  */
+  mem[map (sp)] = sr >> 8;
+  mem[map (sp + 1)] = sr & 0xFF;
+  put32 (map (sp + 2), pc + 2);
+  return OP_RTE;
+}
+
+/* The opcode fetched at an address, for the OS-9 system call vector; -1
+   for any other address.  */
+static int
+os9_fetch (unsigned address)
+{
+  if (address != VECTOR_OS9)
+    return -1;
+  return done ? OP_NOP : (int) os9_call ();
+}
+
 static int
 check_io (unsigned address, int write, unsigned value)
 {
@@ -120,6 +202,9 @@ unsigned int
 m68k_read_memory_16 (unsigned int address)
 {
   address = map (address);
+  int op = os9_fetch (address);
+  if (op >= 0)
+    return op;
   if (check_io (address, 0, 0))
     return 0x4E71;			/* nop */
   if (address & 1)
@@ -131,6 +216,9 @@ unsigned int
 m68k_read_memory_32 (unsigned int address)
 {
   address = map (address);
+  int op = os9_fetch (address);
+  if (op >= 0)
+    return ((unsigned) op << 16) | OP_NOP;
   if (check_io (address, 0, 0))
     return 0;
   if (address & 1)
@@ -446,6 +534,7 @@ main (int argc, char **argv)
   put32 (4, entry);
   for (i = 2; i < 256; i++)
     put32 (i * 4, VECTOR_TRAP);
+  put32 (TRAP0_VEC * 4, VECTOR_OS9);
 
   m68k_init ();
   m68k_set_cpu_type (cpu_type);
