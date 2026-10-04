@@ -1,9 +1,9 @@
 /* newlib, built for each multilib (test/abi-exec, make check-newlib):
    compiled with and without -mos9call, linked with the libc of that
    multilib.  Library calls both ways (qsort calls back), va_list passed
-   to newlib (vsnprintf), setjmp/longjmp (assembly, in both conventions)
-   and malloc (through _sbrk, defined here).  main returns a bit mask of
-   the failed checks.  */
+   to newlib (vsnprintf), setjmp/longjmp (assembly, in both conventions),
+   with the registers longjmp restores, and malloc (through _sbrk,
+   defined here).  main returns a bit mask of the failed checks.  */
 
 #include <setjmp.h>
 #include <stdarg.h>
@@ -74,6 +74,99 @@ jump (int v)
   longjmp (env, v);
 }
 
+/* int regs_after_longjmp (void): d2-d7 and a2-a5 hold marker values when
+   setjmp is called, garbage when longjmp is; after it they must hold the
+   markers again.  Returns a mask of those that don't (bits 2-7: d2-d7,
+   10-13: a2-a5).  It preserves every register but d0, as both
+   conventions allow; setjmp and longjmp are called in the multilib's
+   convention, the jmp_buf on the stack.  */
+extern int regs_after_longjmp (void);
+__asm__ (
+"	.pushsection .text\n"
+"	.type	regs_after_longjmp, @function\n"
+"regs_after_longjmp:\n"
+"	movem.l	%d1-%d7/%a0-%a5,-(%sp)\n"
+"	lea	-256(%sp),%sp\n"
+"	move.l	#0xD2D2D2D2,%d2\n"
+"	move.l	#0xD3D3D3D3,%d3\n"
+"	move.l	#0xD4D4D4D4,%d4\n"
+"	move.l	#0xD5D5D5D5,%d5\n"
+"	move.l	#0xD6D6D6D6,%d6\n"
+"	move.l	#0xD7D7D7D7,%d7\n"
+"	move.l	#0xA2A2A2A2,%a2\n"
+"	move.l	#0xA3A3A3A3,%a3\n"
+"	move.l	#0xA4A4A4A4,%a4\n"
+"	move.l	#0xA5A5A5A5,%a5\n"
+#ifdef __OS9CALL__
+"	move.l	%sp,%d0\n"
+"	bsr.w	setjmp\n"
+#else
+/* Not move.l %sp,-(%sp): the 68000 pushes sp as it was before the
+   decrement, CD-i Emulator's 68070 the decremented value.  */
+"	move.l	%sp,%a0\n"
+"	move.l	%a0,-(%sp)\n"
+"	bsr.w	setjmp\n"
+"	addq.l	#4,%sp\n"
+#endif
+"	tst.l	%d0\n"
+"	bne.s	1f\n"
+"	moveq	#-1,%d2\n"
+"	moveq	#-1,%d3\n"
+"	moveq	#-1,%d4\n"
+"	moveq	#-1,%d5\n"
+"	moveq	#-1,%d6\n"
+"	moveq	#-1,%d7\n"
+"	sub.l	%a2,%a2\n"
+"	sub.l	%a3,%a3\n"
+"	sub.l	%a4,%a4\n"
+"	sub.l	%a5,%a5\n"
+#ifdef __OS9CALL__
+"	move.l	%sp,%d0\n"
+"	moveq	#1,%d1\n"
+"	bsr.w	longjmp\n"
+#else
+"	move.l	%sp,%a0\n"
+"	pea	1.w\n"
+"	move.l	%a0,-(%sp)\n"
+"	bsr.w	longjmp\n"
+#endif
+"1:	moveq	#0,%d0\n"
+"	cmp.l	#0xD2D2D2D2,%d2\n"
+"	beq.s	2f\n"
+"	bset	#2,%d0\n"
+"2:	cmp.l	#0xD3D3D3D3,%d3\n"
+"	beq.s	2f\n"
+"	bset	#3,%d0\n"
+"2:	cmp.l	#0xD4D4D4D4,%d4\n"
+"	beq.s	2f\n"
+"	bset	#4,%d0\n"
+"2:	cmp.l	#0xD5D5D5D5,%d5\n"
+"	beq.s	2f\n"
+"	bset	#5,%d0\n"
+"2:	cmp.l	#0xD6D6D6D6,%d6\n"
+"	beq.s	2f\n"
+"	bset	#6,%d0\n"
+"2:	cmp.l	#0xD7D7D7D7,%d7\n"
+"	beq.s	2f\n"
+"	bset	#7,%d0\n"
+"2:	cmp.l	#0xA2A2A2A2,%a2\n"
+"	beq.s	2f\n"
+"	bset	#10,%d0\n"
+"2:	cmp.l	#0xA3A3A3A3,%a3\n"
+"	beq.s	2f\n"
+"	bset	#11,%d0\n"
+"2:	cmp.l	#0xA4A4A4A4,%a4\n"
+"	beq.s	2f\n"
+"	bset	#12,%d0\n"
+"2:	cmp.l	#0xA5A5A5A5,%a5\n"
+"	beq.s	2f\n"
+"	bset	#13,%d0\n"
+"2:	lea	256(%sp),%sp\n"
+"	movem.l	(%sp)+,%d1-%d7/%a0-%a5\n"
+"	rts\n"
+"	.size	regs_after_longjmp, . - regs_after_longjmp\n"
+"	.popsection\n");
+
 int
 main (void)
 {
@@ -121,6 +214,10 @@ main (void)
     }
   else if (count != 3 || i != 1)
     fail |= 32;
+
+  /* The registers setjmp saves, restored by longjmp.  */
+  if (regs_after_longjmp () != 0)
+    fail |= 1024;
 
   /* malloc and free, strcpy and strlen.  */
   p = malloc (100);
