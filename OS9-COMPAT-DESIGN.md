@@ -574,6 +574,34 @@ change.
 `_stkcheck` also keeps a low-water mark of the stack pointer, which `freemem()` and `stacksiz()`
 report; those are only accurate if all code is built with stack checking.
 
+### Line ends: `-mos9newline`
+
+On OS-9 a text line ends with a carriage return, and in Microware C the escape `\n` *is* that
+carriage return: `'\n'` and `'\r'` are both 13. Microware C 3.2, compiled natively on a CD-i 605
+in CD-i Emulator, prints `nl=13 cr=13` for `printf("nl=%d cr=%d\n", '\n', '\r')`; the same
+source built with GCC prints `nl=10 cr=13`. Its `"\n"` reaches the terminal as a bare line feed,
+which OS-9 doesn't take as the end of a line, and Microware's `fgets` and `readln` read past it.
+
+**`-mos9newline`** makes `\n` a carriage return (13) in GCC too, in character constants, string
+literals and `#if` alike, and defines `__OS9NEWLINE__`. A line feed is then `'\l'`, as in
+Microware C (C 3.2 on the 605 gives `'\l'` and `"\l"[0]` as 10), or `'\x0a'`/`'\012'`; without
+`-mos9newline`, `\l` stays an unknown escape (a pedantic warning, keeping the `l`).
+It is a separate option, **not implied by `-mos9call`**: the calling convention and the meaning
+of `\n` are independent, and code using newlib's I/O may want either. Code that passes text to
+Microware's C library, or writes OS-9 text files, needs it; code that must build either way can
+write `'\r'`, which is 13 in both compilers.
+
+**As implemented:** a `cr_newline` field in libcpp's `cpp_options`; `convert_escape` (in
+`libcpp/charset.c`) gives `\n` the host's carriage return instead of its line feed, and `\l` the
+line feed, before the conversion to the execution character set, so `-fexec-charset` still applies.
+The m68k `TARGET_CPU_CPP_BUILTINS` sets the field from `-mos9newline` and defines the macro. Wide
+character constants (`L'\n'`) follow too; raw strings have no escapes, so a line break in one stays
+a line feed. Level 1 tests: `os9newline-1.c` (the values with the option, `\l` included, in C and in
+`#if`, and the bytes of string literals in the assembler) and `os9newline-2.c` (unchanged without
+it, also under `-mos9call`; `\l` warns). Level 3: `mwtests/newline.c` checks the bytes Microware's
+`sprintf` writes for a GCC format with `\n` and `\l`, and on OS-9 itself writes two lines with `\n`
+that Microware's `fgets` reads back as two lines; built without the option it fails.
+
 ### Implementation points (`gcc/config/m68k/`)
 
 Insertion points in the GCC 11 tree (`gcc/config/m68k/`; line numbers approximate):

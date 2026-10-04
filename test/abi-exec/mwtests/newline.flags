@@ -1,0 +1,1 @@
+-O2 -mpcrel -ma6rel -mos9call -mbuiltin=os9call -mos9newline -w
