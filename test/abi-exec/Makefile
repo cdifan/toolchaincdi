@@ -7,6 +7,7 @@
 #   make check-mw MWLIB=DIR  also link with Microware's C library (see below)
 #   make check-mod       run the tests as OS-9 modules made by elf2mod (see below)
 #   make check-newlib    run nltests/ with newlib, in both multilibs (see below)
+#   make check-lsym      elf2mod's btext, bname and etext (see below)
 #   make check-l68 L68=... [MWLIB=...]  run them as modules linked by
 #                        Microware's l68, through elf2rof; with MWLIB also
 #                        the Level 3 tests, with Microware's clib.l (see below)
@@ -266,6 +267,33 @@ check-l68:
 	@[ -z "$(MWLIB)" ] || { echo "== l68, Microware's clib.l"; \
 	  $(MAKE) --no-print-directory BUILD=$(BUILD)/l68-mw run-mw-l68; }
 
+# elf2mod's module symbols (btext, bname, etext, which Microware's libraries
+# use): lsymtests/lsym.S refers to them near, far and from the data; linked
+# with GNU ld (--noinhibit-exec: ld reports the far ones as truncated, and
+# elf2mod puts them through the jump table), as is and with 40 KB of
+# initialized data (lsymbig); lsymcheck checks every reference in the
+# module.  Needs no Microware files.
+#   make check-lsym
+LSYMVARIANTS = lsym lsymbig
+
+$(BUILD)/lsymcheck: $(HERE)lsymtests/lsymcheck.c
+	mkdir -p $(BUILD)
+	$(HOSTCC) -O2 -o $@ $<
+
+$(BUILD)/lsym/%.mod: $(HERE)lsymtests/lsym.S $(HERE)lsymtests/lsym.ld $(BUILD)/elf2mod
+	mkdir -p $(BUILD)/lsym
+	$(TPREFIX)as -m68000 $(if $(filter lsymbig,$*),--defsym BIGDATA=1) -o $(BUILD)/lsym/$*.o $<
+	$(TPREFIX)ld -q --no-check-sections --noinhibit-exec -T $(HERE)lsymtests/lsym.ld \
+	  --defsym __jmptbl_size=60 -o $(BUILD)/lsym/$*.elf $(BUILD)/lsym/$*.o \
+	  2> $(BUILD)/lsym/$*.ld.log || test -s $(BUILD)/lsym/$*.elf
+	$(BUILD)/elf2mod -n $* $(BUILD)/lsym/$*.elf $@ > /dev/null
+
+check-lsym: $(BUILD)/lsymcheck $(LSYMVARIANTS:%=$(BUILD)/lsym/%.mod)
+	@fail=0; for t in $(LSYMVARIANTS); do \
+	  if $(BUILD)/lsymcheck $(BUILD)/lsym/$$t.mod > $(BUILD)/lsym/$$t.log; \
+	  then echo "PASS: lsym/$$t"; else echo "FAIL: lsym/$$t"; cat $(BUILD)/lsym/$$t.log; fail=1; fi; \
+	done; exit $$fail
+
 # OS-9 itself: the Level 3 tests (mwtests/) built with -DREAL_OS9, which
 # adds checks needing system calls (memory, files, the math trap), as real
 # modules: Microware's cstart.r as the startup (rof2elf, with its __os9_*
@@ -403,7 +431,7 @@ check-os9newlib:
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all run run-mod run-l68 run-mw-l68 run-newlib check check-mw check-mod check-l68 \
+.PHONY: all run run-mod run-l68 run-mw-l68 run-newlib check check-mw check-mod check-l68 check-lsym \
 	check-newlib check-os9 check-os9mix check-os9mod run-os9mod \
 	check-os9newlib run-os9newlib check-os9math run-os9math clean
 .SECONDARY:
