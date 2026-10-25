@@ -95,7 +95,7 @@ check:
 # cstart.r, clib.l and sys.l (lower or upper case).
 #   make check-mw MWLIB=/path/to/LIB
 MWLIB    ?=
-CFLAGS_MW = -O2 -mpcrel -ma6rel -mos9call -mbuiltin=os9call -w
+CFLAGS_MW = -std=gnu89 -O2 -mpcrel -ma6rel -mos9call -mbuiltin=os9call -w
 MWTESTS   = $(basename $(notdir $(wildcard $(HERE)mwtests/*.c)))
 mwfile    = $(firstword $(wildcard $(MWLIB)/$(1) $(MWLIB)/$(shell echo $(1) | tr a-z A-Z)))
 
