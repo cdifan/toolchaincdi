@@ -143,7 +143,9 @@ check-mw: $(BUILD)/abirun $(MWTESTS:%=$(BUILD)/mw/%.elf)
 # converted with rof2elf and removed there.
 #   make check-ucc MWOS='C:\path\to\mwos' UCCWORK=/mnt/c/path/to/dir
 UCCWORK  ?=
-CFLAGS_UCC = -O2 -mpcrel -ma6rel -mos9call=ucc -w
+# The tests link only libgcc: no loops turned into library calls (GCC 16
+# makes a strlen call of a counting loop).
+CFLAGS_UCC = -O2 -mpcrel -ma6rel -mos9call=ucc -w -fno-tree-loop-distribute-patterns
 UCCTESTS  = $(filter-out %-mw,$(basename $(notdir $(wildcard $(HERE)ucctests/*.c))))
 
 $(BUILD)/ucc/%-mw.o: $(HERE)ucctests/%-mw.c $(BUILD)/rof2elf
