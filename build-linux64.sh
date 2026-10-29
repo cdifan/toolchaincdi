@@ -6,9 +6,10 @@
 # $WORK). Needs the packages listed in .github/workflows/linux-build.yml. $J sets make's job count
 # (default: the number of CPUs).
 #
-# The steps: GMP, MPFR and MPC (static, so the programs don't need them); binutils, GCC (compiler
-# and libgcc), newlib, GCC again (with newlib), configured as in the Dockerfile; the
-# m68k-os9-tools with their Makefile, linked with that binutils' libbfd.
+# The steps: GMP, MPFR and MPC (static, so the programs don't need them; for any x86-64 CPU, not
+# the build machine's); binutils, GCC (compiler and libgcc), newlib, GCC again (with newlib),
+# configured as in the Dockerfile; the m68k-os9-tools with their Makefile, linked with that
+# binutils' libbfd.
 # The Linux programs are stripped; the m68k libraries are left as built. NAME/README.linux lists
 # the glibc version and the shared libraries the programs need, read from the programs.
 #
@@ -76,8 +77,10 @@ if needs_configure deps "$D/lib/libgmp.a" "$D/lib/libmpfr.a" "$D/lib/libmpc.a"; 
 		esac
 		# GMP 6.2.1's compiler probe is incompatible with GCC 15's default C23 dialect.
 		# Its sources (and the two libraries which use it) build cleanly as GNU C17.
-		CC="gcc -std=gnu17" "../$b/configure" --prefix="$D" --disable-shared --enable-static \
-		  "${DEP_ARGS[@]}" > configure.log
+		# --build: the generic triplet; GMP's own config.guess names the build machine's CPU
+		# (e.g. ivybridge-pc-linux-gnu), and GMP is then compiled for that CPU only.
+		CC="gcc -std=gnu17" "../$b/configure" --build="$H" --prefix="$D" --disable-shared \
+		  --enable-static "${DEP_ARGS[@]}" > configure.log
 		make -j"$J" > make.log
 		make install > install.log
 		cd ..
