@@ -4,8 +4,13 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
   workflow_dispatch:
 
+# Image tags: :<commit> always, :latest only from main, :<tag> (e.g. :v1.0.0) for a release tag.
+# A release tag on a commit whose image is already built (by the push to main) only adds the tag's
+# name to that image, without building it again.
 # see: https://github.com/marketplace/actions/build-and-push-docker-images
 jobs:
   build:
@@ -14,6 +19,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/toolchaincdi
     steps:
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -21,9 +28,19 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Name the commit's image after the tag, if it is built
+        id: retag
+        if: github.ref_type == 'tag'
+        run: |
+          if docker buildx imagetools inspect "$IMAGE:$GITHUB_SHA" > /dev/null 2>&1; then
+            docker buildx imagetools create -t "$IMAGE:$GITHUB_REF_NAME" "$IMAGE:$GITHUB_SHA"
+            echo "done=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: docker/build-push-action@v6
+        if: steps.retag.outputs.done != 'true'
         with:
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/toolchaincdi:latest
-            ghcr.io/${{ github.repository_owner }}/toolchaincdi:${{ github.sha }}
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ github.ref == 'refs/heads/main' && format('{0}:latest', env.IMAGE) || '' }}
+            ${{ github.ref_type == 'tag' && format('{0}:{1}', env.IMAGE, github.ref_name) || '' }}
