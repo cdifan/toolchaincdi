@@ -16,6 +16,27 @@ compilers, assemblers, linkers and libraries:
 See [OS9-COMPAT-DESIGN.md](OS9-COMPAT-DESIGN.md) for the design. [`test/`](test/) holds the
 tests (see "Tests" below).
 
+## What's new in 0.9.1
+
+A bug-fix release. GCC stays at 11.1.0 (1.0.0 has GCC 16.2.0).
+
+- **GCC:** in functions that save all registers or use the constant pool (a `long double`
+  constant, say), the frame pointer a5 was saved a second time, as the PIC register. The code
+  ran correctly, but the unwind information gave the caller a wrong a5, as debuggers and
+  `_Unwind_Backtrace` read it.
+- **`m68k-os9-l68`:** C constructors and destructors (the `constructor` and `destructor`
+  attributes) are now an error. They used to link without a message and then never ran, since
+  `cstart` doesn't call them. With `m68k-os9-gcc` they run as before.
+- **gastor68** (GCC's assembly for Microware's r68):
+  - blanks in operands (GCC writes `subq.l #8, %sp`) made r68 report "Missing operand";
+  - with `-mbsrw`, calls written as `bsr.w f@PLTPC` left an undefined name, and the link failed;
+  - floating-point hex immediates without leading zeros, as GCC writes them, gave r68 a
+    different constant without any message, because r68 reads the digits from the left.
+- **`m68k-os9-r68`** (r68togas): assembles the 68881 branches `fb<cc>.w` and `fb<cc>.l`, and
+  reads short floating-point hex immediates as Microware's r68 does.
+- **Docs:** constructors and destructors through `xcc`/`l68`, and `-fexceptions`, are listed as
+  unsupported; `m68k-os9-gcc` uses GCC's default C dialect.
+
 ## Repositories
 
 The submodules come from forks under [github.com/cdifan](https://github.com/cdifan), each on its
