@@ -195,7 +195,7 @@ names of Microware's tools: `xcc` and `cc` (`m68k-os9-xcc`), `ucc` (`m68k-os9-xc
 mode), `l68`, `r68` and `libgen`. `CDEF` and `CLIB` work as above, with Windows paths; in cmd:
 
 ```
-set PATH=C:\toolchaincdi-v0.9.0-win64\bin;%PATH%
+set PATH=C:\toolchaincdi-v0.9.1-win64\bin;%PATH%
 set CDEF=C:\OS9C\DEFS
 set CLIB=C:\OS9C\LIB
 xcc hello.c -f=hello
@@ -221,8 +221,8 @@ Unpack it anywhere and put its `bin` folder on `PATH`. `bin` has the tools under
 and short names as the Windows build's; `CDEF` and `CLIB` work as above:
 
 ```
-tar xf toolchaincdi-v0.9.0-linux64.tar.gz
-export PATH=$PWD/toolchaincdi-v0.9.0-linux64/bin:$PATH
+tar xf toolchaincdi-v0.9.1-linux64.tar.gz
+export PATH=$PWD/toolchaincdi-v0.9.1-linux64/bin:$PATH
 m68k-os9-gcc -o hello hello.c
 ```
 
