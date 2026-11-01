@@ -196,9 +196,11 @@ Note that if you run docker without `-u`, built files are owned by root. Be care
 
 psxbuild (libcdio) will say something about failing filename constraints, but it's OK.
 
-The image is built by GitHub Actions on every push to `main` and published as
-`ghcr.io/cdifan/toolchaincdi`. The original `ghcr.io/murachue/toolchaincdi` image predates this
-fork's changes.
+The image is built by GitHub Actions and published as `ghcr.io/cdifan/toolchaincdi`, listed under
+"Packages" on the repository's page (not under "Releases"): `:latest` on every push to `main`, and
+`:v0.9.1` and so on for every release tag (`FROM ghcr.io/cdifan/toolchaincdi:v0.9.1` stays on
+0.9.1, with GCC 11). The original `ghcr.io/murachue/toolchaincdi` image predates this fork's
+changes.
 
 # Windows
 

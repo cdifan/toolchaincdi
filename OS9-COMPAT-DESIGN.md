@@ -1475,7 +1475,9 @@ Development happens in forks under [github.com/cdifan][cdifan]:
 [cdifan]: https://github.com/cdifan
 
 - **`cdifan/toolchaincdi`** (forked from `murachue/toolchaincdi`): the superproject, branch
-  `main`. CI publishes `ghcr.io/cdifan/toolchaincdi:latest` on every push to `main`.
+  `main`, and `release/0.9` for the 0.9 releases. CI publishes
+  `ghcr.io/cdifan/toolchaincdi:latest` on every push to `main`, and `:<tag>` for every release
+  tag.
 - **`cdifan/gcc`** (forked from `gcc-mirror/gcc`, so upstream branches and tags are available):
   Murachue's **`11.1.0-os9`** branch is kept unchanged as the reference. This work is on
   **`11.1.0-os9-compat`**, branched from it, which `src/gcc` pins.
