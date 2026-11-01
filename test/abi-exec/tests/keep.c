@@ -11,11 +11,14 @@ int (*volatile pf) (int) = os9_inc;
    stores them, which GCC doesn't see (as pointers, it would fold the
    comparisons with the local v[] to false).  */
 extern volatile unsigned long seen_a0, seen_a1;
+/* Whether R is a value keep_os9 keeps across its calls: one of the
+   pointers, or the sum of the first two calls' results (11 + 201) at the
+   third call; which one depends on the compiler's register choice.  */
 static int
 seen (unsigned long r, const int *v)
 {
   return (r == (unsigned long) &v[0] || r == (unsigned long) &v[1]
-	  || r == (unsigned long) &v[2]);
+	  || r == (unsigned long) &v[2] || r == 11 + 201);
 }
 
 static int __attribute__ ((noinline))
@@ -53,8 +56,8 @@ main (void)
   if (keep_os9 (&v[0], &v[1], &v[2]) != 2 * (10 + 200 + 3000) + 3)
     fail |= 1;
 #ifdef __OPTIMIZE__
-  /* The point of the test: with optimization, the caller keeps one of
-     the pointers live across the calls in a0 or a1.  */
+  /* The point of the test: with optimization, the caller keeps a value
+     live across the calls in a0 or a1 (a pointer or the running sum).  */
   if (!seen (seen_a0, v) && !seen (seen_a1, v))
     fail |= 8;
 #endif
