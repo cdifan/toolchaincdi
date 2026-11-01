@@ -85,7 +85,7 @@ git -C src/gcc fetch --depth=10 origin 053e3cae1ce30de60a7e1f91421a00cb41670849
 git -C src/gcc diff --stat gcc-11.1.0-base HEAD
 ```
 
-### Portability to current mainline (GCC 17)
+### Portability to newer GCC
 
 Murachue's fork diff, applied as a dry run to gcc-mirror `master` (`BASE-VER` 17.0.0):
 
@@ -102,12 +102,13 @@ Murachue's fork diff, applied as a dry run to gcc-mirror `master` (`BASE-VER` 17
 - The cc0 removal in GCC 12 rewrote m68k condition-code handling, but none of the fork's commits
   touch that area.
 
-The argument-passing hooks (`function_arg_info`) are the same from GCC 10 through 17, so this
-work's `-mos9call` (§4) ports nearly unchanged. It was implemented on GCC 11.1, the fork's
-baseline, and then ported to GCC 16.2.0 (branch `16.2.0-os9-compat`, §10). GCC 16 needed two
-additions for code quality: costs for the callee-saved registers (without them, GCC 16's register
-allocator rarely keeps values in them across calls) and jump tables for `switch` at `-O0`, as GCC
-11 makes them. A port to GCC 17 is a separate step (§12).
+The argument-passing hooks (`function_arg_info`) are the same from GCC 10 through 16.2.0 and
+current mainline, so this work's `-mos9call` (§4) ports nearly unchanged. It was implemented on
+GCC 11.1, the fork's baseline, and then ported to GCC 16.2.0 (branch `16.2.0-os9-compat`, §10).
+With our tuning, the code is better than stock GCC 16.2.0's for m68k: GCC 16 needed cost
+calculation adjustments for the callee-saved registers (without them, it rarely keeps values in
+them across calls), and jump tables for `switch` at `-O0` (GCC 16 makes them only from `-O1` on,
+GCC 11 at every level).
 
 binutils needs no OS-9 support: the `elfos9` name is accepted through generic patterns. The
 pinned commit is upstream 2.35 with four small gas fixes (`cdifan/binutils-gdb`, branch
@@ -1749,7 +1750,8 @@ committed (§7).
 
 ## 12. Open questions
 
-- **GCC 17:** porting the fork to current mainline (§2).
+- **Later GCC releases:** following upstream GCC beyond 16.2.0 (§2); the reload → LRA switch is
+  the main risk.
 - **C++:** enabling it in the toolchain build (`--enable-languages=c,c++`), where the C++ parts of
   §4 (mangling, member functions) and their Level 1 tests apply, and building libstdc++ with
   `-mos9call`, with `stackcall` on the unwinder interfaces.
