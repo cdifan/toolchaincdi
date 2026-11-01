@@ -19,6 +19,11 @@ WORK=${WORK:-$PWD/build-win64}
 J=${J:-$(nproc)}
 H=x86_64-w64-mingw32
 T=m68k-elfos9
+# The build machine, named explicitly: where Windows programs run on Linux (WSL), configure would
+# otherwise decide that it isn't cross compiling, and GMP would take $CC (the mingw compiler) for
+# its build compiler.
+B=$(gcc -dumpmachine)
+export CC_FOR_BUILD=${CC_FOR_BUILD:-gcc}
 L=$WORK/linux
 D=$WORK/deps-$H
 P=$WORK/install
@@ -41,8 +46,8 @@ deps() {
   local host=$1 prefix=$2 b
   for b in $GMP $MPFR $MPC; do
     rm -rf "build-$b-$host" && mkdir "build-$b-$host" && cd "build-$b-$host"
-    "../$b/configure" --host="$host" --prefix="$prefix" --disable-shared --enable-static \
-      --with-gmp="$prefix" --with-mpfr="$prefix" > configure.log
+    "../$b/configure" --build="$B" --host="$host" --prefix="$prefix" --disable-shared \
+      --enable-static --with-gmp="$prefix" --with-mpfr="$prefix" > configure.log
     make -j"$J" > make.log
     make install > install.log
     cd ..
@@ -50,7 +55,7 @@ deps() {
 }
 
 step "GMP, MPFR and MPC for Linux"
-deps "$(gcc -dumpmachine)" "$WORK/deps-linux"
+deps "$B" "$WORK/deps-linux"
 step "GMP, MPFR and MPC for Windows"
 deps $H "$D"
 
@@ -87,17 +92,17 @@ cd ..
 rm -rf "$P"
 step "binutils for Windows"
 rm -rf binutils-$H && mkdir binutils-$H && cd binutils-$H
-"$SRC/binutils-gdb/configure" --host=$H --target=$T --prefix="$P" --disable-multilib \
-  --with-cpu=68000 --disable-nls --disable-gdb --disable-gdbserver --disable-sim \
-  --disable-readline --disable-libdecnumber --enable-install-libbfd --disable-libctf \
-  --disable-werror > configure.log
+"$SRC/binutils-gdb/configure" --build="$B" --host=$H --target=$T --prefix="$P" \
+  --disable-multilib --with-cpu=68000 --disable-nls --disable-gdb --disable-gdbserver \
+  --disable-sim --disable-readline --disable-libdecnumber --enable-install-libbfd \
+  --disable-libctf --disable-werror > configure.log
 make -j"$J" MAKEINFO=true > make.log
 make install MAKEINFO=true > install.log
 cd ..
 
 step "GCC for Windows"
 rm -rf gcc-$H && mkdir gcc-$H && cd gcc-$H
-"$SRC/gcc/configure" --host=$H --target=$T --prefix="$P" --enable-languages=c \
+"$SRC/gcc/configure" --build="$B" --host=$H --target=$T --prefix="$P" --enable-languages=c \
   --enable-multilib --with-cpu=68000 --with-libgloss --without-headers --disable-shared \
   --disable-nls --with-gmp="$D" --with-mpfr="$D" --with-mpc="$D" --disable-win32-registry \
   > configure.log
