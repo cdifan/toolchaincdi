@@ -16,6 +16,26 @@ compilers, assemblers, linkers and libraries:
 See [OS9-COMPAT-DESIGN.md](OS9-COMPAT-DESIGN.md) for the design. [`test/`](test/) holds the
 tests (see "Tests" below).
 
+## What's new in 1.0.0
+
+- **GCC 16.2.0** instead of 11.1.0, with the same OS-9 options; C only for now (C++ is in
+  progress). The 0.9 releases keep GCC 11.1.0 (branch `release/0.9`).
+- **C dialect:** `m68k-elfos9-gcc` and `m68k-os9-gcc` use GCC 16's default, `gnu23`: `int f();`
+  declares a function without parameters, and `bool`, `true` and `false` are keywords. Implicit
+  function declarations, implicit `int` and incompatible pointer assignments are errors, as from
+  GCC 14. `-std=gnu17` gives the earlier dialect; `-fpermissive` turns those errors back into
+  warnings. `m68k-os9-xcc` and `m68k-os9-ucc` still compile as Microware's C 3.2 and Ultra C
+  (`-std=gnu89`, `-std=c89`), so old makefiles work unchanged.
+- **Code:** better than stock GCC 16.2.0's for m68k, thanks to our tuning, and about the same size
+  as with GCC 11 (measured on a complete application). GCC 16 needed cost calculation adjustments
+  for the callee-saved registers (without them, it rarely keeps values in them across calls), and
+  jump tables for `switch` at `-O0` (GCC 16 makes them only from `-O1` on, GCC 11 at every level).
+- **newlib** builds with GCC 16 (declarations only; no change in behaviour).
+- **The fixes of 0.9.1:** a5 in the unwind information; `m68k-os9-l68` refuses constructors and
+  destructors; gastor68's blanks in operands, `@PLTPC` and floating-point hex immediates;
+  `m68k-os9-r68`'s `fb<cc>.w`/`.l`.
+- `build-win64.sh` also builds on WSL.
+
 ## Repositories
 
 The submodules come from forks under [github.com/cdifan](https://github.com/cdifan), each on its
