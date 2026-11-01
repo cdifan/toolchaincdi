@@ -23,13 +23,16 @@ own branch, next to Murachue's unchanged one where Murachue's repository has one
 
 | Submodule | Repository | Branch |
 |---|---|---|
-| `src/gcc` | [cdifan/gcc](https://github.com/cdifan/gcc) | `11.1.0-os9-compat` (`11.1.0-os9` is Murachue's) |
+| `src/gcc` | [cdifan/gcc](https://github.com/cdifan/gcc) | `16.2.0-os9-compat` (`11.1.0-os9` is Murachue's) |
 | `src/binutils-gdb` | [cdifan/binutils-gdb](https://github.com/cdifan/binutils-gdb) | `m68k-gas-fixes` |
 | `src/newlib-cygwin` | [cdifan/newlib-cygwin](https://github.com/cdifan/newlib-cygwin) | `newlib-4.1.0-os9-compat` |
 | `src/m68k-os9-tools` | [cdifan/m68k-os9-tools](https://github.com/cdifan/m68k-os9-tools) | `main-compat` (a fork of Murachue's elf2mod) |
 
 psximager points at Murachue's repository. Murachue's own toolchain is
 [murachue/toolchaincdi](https://github.com/murachue/toolchaincdi).
+
+The 0.9 releases (branch `release/0.9`) have GCC 11.1.0 (`11.1.0-os9-compat`) instead of GCC
+16.2.0, with the same OS-9 options.
 
 # Ingredients
 
@@ -38,7 +41,9 @@ psximager points at Murachue's repository. Murachue's own toolchain is
       `m68k-os9-l68`, which have one)
     - `m68k-elfos9-as` defaults to a 68020-class CPU; assemble hand-written code with `-m68000
       --pcrel`, so it rejects instructions the 68000/68070 lacks and keeps branches PC-relative
-- gcc with OS-9/68000 customization (`m68k-elfos9-gcc`)
+- gcc 16.2.0 with OS-9/68000 customization (`m68k-elfos9-gcc`), C only
+    - the default dialect is GCC 16's, `gnu23` (`int f();` declares a function without
+      parameters, `bool` is a keyword); `-std=gnu17` gives the earlier one
     - `-ma6rel` (with `-mpcrel`) is required for OS-9
     - `-mbsrw` may shrink your app a bit
     - the OS-9 options (`-mos9call` and the others) are in GCC's manual, under the m68k options
@@ -60,7 +65,7 @@ psximager points at Murachue's repository. Murachue's own toolchain is
 
 # Tests
 
-- `test/baseline`: the toolchain against the unmodified fork (no regression).
+- `test/baseline`: the toolchain against the unmodified fork (no regression; GCC 11.1.0 only).
 - `test/dejagnu`: GCC's own test suite for the OS-9 options.
 - `test/abi-exec`: compiled and linked programs run in a 68000 emulator, and the OS-9 targets on
   CD-i Emulator or a real CD-i player (`make check-os9` and the others).
@@ -195,7 +200,7 @@ names of Microware's tools: `xcc` and `cc` (`m68k-os9-xcc`), `ucc` (`m68k-os9-xc
 mode), `l68`, `r68` and `libgen`. `CDEF` and `CLIB` work as above, with Windows paths; in cmd:
 
 ```
-set PATH=C:\toolchaincdi-v0.9.0-win64\bin;%PATH%
+set PATH=C:\toolchaincdi-v1.0.0-win64\bin;%PATH%
 set CDEF=C:\OS9C\DEFS
 set CLIB=C:\OS9C\LIB
 xcc hello.c -f=hello
@@ -221,8 +226,8 @@ Unpack it anywhere and put its `bin` folder on `PATH`. `bin` has the tools under
 and short names as the Windows build's; `CDEF` and `CLIB` work as above:
 
 ```
-tar xf toolchaincdi-v0.9.0-linux64.tar.gz
-export PATH=$PWD/toolchaincdi-v0.9.0-linux64/bin:$PATH
+tar xf toolchaincdi-v1.0.0-linux64.tar.gz
+export PATH=$PWD/toolchaincdi-v1.0.0-linux64/bin:$PATH
 m68k-os9-gcc -o hello hello.c
 ```
 

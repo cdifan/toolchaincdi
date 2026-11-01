@@ -35,10 +35,13 @@ The [`Dockerfile`](Dockerfile) builds, from the pinned submodules under `src/`:
 | Component | Source | Notes |
 |---|---|---|
 | binutils 2.35 | [cdifan/binutils-gdb](https://github.com/cdifan/binutils-gdb) `m68k-gas-fixes` | upstream 2.35 with four gas fixes (§2); the target name is accepted through generic m68k patterns |
-| GCC 11.1.0 | [cdifan/gcc](https://github.com/cdifan/gcc) `11.1.0-os9-compat` (Murachue's `11.1.0-os9` plus this work) | `-mpcrel`, `-ma6rel`, `-mbsrw` (§2), and the OS-9 options (§4) |
+| GCC 16.2.0 | [cdifan/gcc](https://github.com/cdifan/gcc) `16.2.0-os9-compat` (Murachue's `11.1.0-os9` plus this work, on GCC 16.2.0) | C only; `-mpcrel`, `-ma6rel`, `-mbsrw` (§2), and the OS-9 options (§4) |
 | newlib 4.1.0 | [cdifan/newlib-cygwin](https://github.com/cdifan/newlib-cygwin) `newlib-4.1.0-os9-compat` | multilibs for both conventions, and an OS-9 runtime in libgloss (§4) |
 | m68k-os9-tools | [cdifan/m68k-os9-tools](https://github.com/cdifan/m68k-os9-tools) `main-compat` | a heavily extended fork of Murachue's elf2mod: `elf2mod` (linked ELF → OS-9 module), `rof2elf`, `elf2rof` (§6), and the drop-ins for Microware's tools |
 | psximager | [murachue/psximager](https://github.com/murachue/psximager) `cdi` | disc images |
+
+The 0.9 releases (the superproject's branch `release/0.9`) have GCC 11.1.0 from
+`11.1.0-os9-compat` instead, with the same OS-9 options.
 
 Build flow for an application:
 
@@ -100,8 +103,11 @@ Murachue's fork diff, applied as a dry run to gcc-mirror `master` (`BASE-VER` 17
   touch that area.
 
 The argument-passing hooks (`function_arg_info`) are the same from GCC 10 through 17, so this
-work's `-mos9call` (§4) would port nearly unchanged. It is implemented on GCC 11.1, the fork's
-baseline; a port to GCC 17 is a separate step (§12).
+work's `-mos9call` (§4) ports nearly unchanged. It was implemented on GCC 11.1, the fork's
+baseline, and then ported to GCC 16.2.0 (branch `16.2.0-os9-compat`, §10). GCC 16 needed two
+additions for code quality: costs for the callee-saved registers (without them, GCC 16's register
+allocator rarely keeps values in them across calls) and jump tables for `switch` at `-O0`, as GCC
+11 makes them. A port to GCC 17 is a separate step (§12).
 
 binutils needs no OS-9 support: the `elfos9` name is accepted through generic patterns. The
 pinned commit is upstream 2.35 with four small gas fixes (`cdifan/binutils-gdb`, branch
@@ -1475,10 +1481,13 @@ Development happens in forks under [github.com/cdifan][cdifan]:
 [cdifan]: https://github.com/cdifan
 
 - **`cdifan/toolchaincdi`** (forked from `murachue/toolchaincdi`): the superproject, branch
-  `main`. CI publishes `ghcr.io/cdifan/toolchaincdi:latest` on every push to `main`.
+  `main`, and `release/0.9` for the 0.9 releases (GCC 11.1.0). CI publishes
+  `ghcr.io/cdifan/toolchaincdi:latest` on every push to `main`.
 - **`cdifan/gcc`** (forked from `gcc-mirror/gcc`, so upstream branches and tags are available):
   Murachue's **`11.1.0-os9`** branch is kept unchanged as the reference. This work is on
-  **`11.1.0-os9-compat`**, branched from it, which `src/gcc` pins.
+  **`11.1.0-os9-compat`**, branched from it, which `src/gcc` pins in the 0.9 releases. From
+  release 1.0.0, `src/gcc` pins **`16.2.0-os9-compat`**: `releases/gcc-16.2.0` with Murachue's
+  branch as one commit (as of `053e3cae1`) and this work on top.
 - **Fixes to Murachue's own code** are on separate branches from `11.1.0-os9`, one commit each,
   so they can be offered to Murachue's fork, and are merged into `11.1.0-os9-compat`:
   `11.1.0-os9-const-pointers` (read-only variables holding addresses are a6-relative data) and
@@ -1528,6 +1537,8 @@ Without the OS-9 options, the compiler behaves exactly as before.
   without `-mbsrw`), and requires **byte-identical** assembly. The reference is Murachue's branch
   plus the fixes that deliberately change it (§10), as built from `11.1.0-os9-const-pointers`
   (`run.sh` explains; with the unmodified compiler, `strftime` differs).
+- The reference exists for GCC 11.1.0 only, so Level 0 checks the 0.9 releases. For GCC 16 it
+  would need Murachue's commit and those fixes built on GCC 16.2.0, which hasn't been done.
 - The baselines aren't committed: they would go stale with every compiler build.
 
 ### Level 1: compile-only ABI checks

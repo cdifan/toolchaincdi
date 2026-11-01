@@ -5,7 +5,7 @@
 [submodule "gcc"]
 	path = src/gcc
 	url = https://github.com/cdifan/gcc.git
-	branch = 11.1.0-os9-compat
+	branch = 16.2.0-os9-compat
 [submodule "newlib-cygwin"]
 	path = src/newlib-cygwin
 	url = https://github.com/cdifan/newlib-cygwin.git
