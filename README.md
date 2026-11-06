@@ -1,6 +1,7 @@
 # toolchaincdi
 
-A GCC toolchain for developing CD-i (or OS-9/68000) applications, as a Docker image.
+A GCC toolchain for developing CD-i (or OS-9/68000) applications, ready to download for Windows
+and Linux, or as a Docker image.
 
 This is a fork of [murachue/toolchaincdi](https://github.com/murachue/toolchaincdi), with
 everything Murachue built kept as it is. It adds interoperability with Microware's OS-9 C
@@ -15,6 +16,39 @@ compilers, assemblers, linkers and libraries:
 
 See [OS9-COMPAT-DESIGN.md](OS9-COMPAT-DESIGN.md) for the design. [`test/`](test/) holds the
 tests (see "Tests" below).
+
+## Download
+
+The [latest release](https://github.com/cdifan/toolchaincdi/releases/latest) has the complete
+toolchain ready to run: unpack the archive for your system and put its `bin` folder on `PATH`.
+
+| System | Release file | Notes |
+|---|---|---|
+| Windows (x86_64) | `toolchaincdi-<version>-win64.zip` | no make; see [Windows](#windows) |
+| Linux (x86_64) | `toolchaincdi-<version>-linux64.tar.gz` | glibc 2.34 or newer (Ubuntu 22.04, Debian 12 and later); make from the system; see [Linux](#linux) |
+| Docker | `ghcr.io/cdifan/toolchaincdi:<version>` | has psximager, for making disc images; see [How to use?](#how-to-use) |
+
+The 1.x releases have GCC 16.2.0, the 0.9 releases GCC 11.1.0. Microware's own headers and
+libraries are not included: you need your own copy only to build with them.
+
+## What's new in 1.0.1
+
+A bug-fix release. GCC stays at 16.2.0 (0.9.2 has the same fixes, with GCC 11.1.0).
+
+- **`ld`:** a program with 16 to 32 KB of static data failed to link, with "cannot move location
+  counter backwards" in the linker script.
+- **`as`:** `movep` with a symbol, or an equate defined later, as its displacement got no
+  relocation and came out as 0, without any message. `m68k-os9-r68` assembles through `as`, so
+  this also went for r68 sources.
+- **`m68k-os9-l68`:** common symbols are now placed where Microware's `l68` places them, for C 3.2
+  and for Ultra C, so a program with commons has its data at the same addresses; C 3.2's bug that
+  puts an object's commons over its vsect is not copied. Two names of one address get two jump
+  table entries, and with `-dialect=ucc` the pointer tables are in Ultra C's order.
+- **`m68k-os9-l68` and the other front ends:** when a link needs a jump table and `elf2mod` then
+  fails for another reason, its message is shown, not the first link's "relocation truncated".
+- **`elf2mod`:** warns about a code label as an a6-relative operand (`pea Label(a6)`). It gets the
+  label's offset in the module, which isn't what the instruction means; it usually means
+  read-only data in the code that another object addresses as data.
 
 ## What's new in 1.0.0
 
@@ -202,26 +236,20 @@ psxbuild (libcdio) will say something about failing filename constraints, but it
 
 The image is built by GitHub Actions and published as `ghcr.io/cdifan/toolchaincdi`, listed under
 "Packages" on the repository's page (not under "Releases"): `:latest` on every push to `main`, and
-`:v1.0.0` and so on for every release tag (`FROM ghcr.io/cdifan/toolchaincdi:v1.0.0` stays on one
+`:v1.0.1` and so on for every release tag (`FROM ghcr.io/cdifan/toolchaincdi:v1.0.1` stays on one
 release). The original `ghcr.io/murachue/toolchaincdi` image predates this fork's changes.
 
 # Windows
 
-The toolchain also runs on Windows, without Docker. GitHub Actions builds it with
-[`build-win64.sh`](build-win64.sh) (on Linux, with mingw-w64, for `x86_64-w64-mingw32`):
-
-- on every push to `main`, as the artifact `toolchaincdi-<commit>-win64` of the "Build the
-  Windows toolchain" run in the Actions tab (downloading it needs a GitHub login; artifacts
-  expire after 90 days);
-- for every release tag `v*`, as `toolchaincdi-<tag>-win64.zip` on the Releases page.
-
-Unpack it anywhere and put its `bin` folder on `PATH`. `bin` has the tools under their long names
-(`m68k-elfos9-gcc`, `m68k-os9-gcc`, `m68k-os9-xcc`, ...) and, for old makefiles, under the short
-names of Microware's tools: `xcc` and `cc` (`m68k-os9-xcc`), `ucc` (`m68k-os9-xcc` in Ultra C
-mode), `l68`, `r68` and `libgen`. `CDEF` and `CLIB` work as above, with Windows paths; in cmd:
+The toolchain can run on Windows without Docker. Download `toolchaincdi-<version>-win64.zip` from
+the [latest release](https://github.com/cdifan/toolchaincdi/releases/latest), unpack it anywhere and
+put its `bin` folder on `PATH`. `bin` has the tools under their long names (`m68k-elfos9-gcc`,
+`m68k-os9-gcc`, `m68k-os9-xcc`, ...) and, for old makefiles, under the short names of Microware's
+tools: `xcc` and `cc` (`m68k-os9-xcc`), `ucc` (`m68k-os9-xcc` in Ultra C mode), `l68`, `r68` and
+`libgen`. `CDEF` and `CLIB` work as above, with Windows paths; in cmd:
 
 ```
-set PATH=C:\toolchaincdi-v1.0.0-win64\bin;%PATH%
+set PATH=C:\toolchaincdi-v1.0.1-win64\bin;%PATH%
 set CDEF=C:\OS9C\DEFS
 set CLIB=C:\OS9C\LIB
 xcc hello.c -f=hello
@@ -229,32 +257,37 @@ xcc hello.c -f=hello
 
 The Windows build has no psximager and no make.
 
+To try a change that isn't released yet, every push to `main` also builds this, as the artifact
+`toolchaincdi-<commit>-win64` of the "Build the Windows toolchain" run in the Actions tab
+(downloading it needs a GitHub login; artifacts expire after 90 days). The archives are made with
+[`build-win64.sh`](build-win64.sh), on Linux, with mingw-w64, for `x86_64-w64-mingw32`.
+
 
 # Linux
 
 ## Prebuilt
 
-The toolchain also runs on Linux, without Docker (x86_64, glibc 2.34 or newer: Ubuntu 22.04,
-Debian 12 and later). GitHub Actions builds it with [`build-linux64.sh`](build-linux64.sh), in an
-Ubuntu 22.04 container:
-
-- on every push to `main`, as the artifact `toolchaincdi-<commit>-linux64` of the "Build the Linux
-  toolchain" run in the Actions tab, holding `toolchaincdi-<commit>-linux64.tar.gz` (downloading
-  it needs a GitHub login; artifacts expire after 90 days);
-- for every release tag `v*`, as `toolchaincdi-<tag>-linux64.tar.gz` on the Releases page.
-
-Unpack it anywhere and put its `bin` folder on `PATH`. `bin` has the tools under the same long
-and short names as the Windows build's; `CDEF` and `CLIB` work as above:
+The toolchain can run on Linux without Docker (x86_64, glibc 2.34 or newer: Ubuntu 22.04, Debian 12
+and later). Download `toolchaincdi-<version>-linux64.tar.gz` from the [latest
+release](https://github.com/cdifan/toolchaincdi/releases/latest), unpack it anywhere and put its
+`bin` folder on `PATH`. `bin` has the tools under the same long and short names as the Windows
+build's; `CDEF` and `CLIB` work as above:
 
 ```
-tar xf toolchaincdi-v1.0.0-linux64.tar.gz
-export PATH=$PWD/toolchaincdi-v1.0.0-linux64/bin:$PATH
+tar xf toolchaincdi-v1.0.1-linux64.tar.gz
+export PATH=$PWD/toolchaincdi-v1.0.1-linux64/bin:$PATH
 m68k-os9-gcc -o hello hello.c
 ```
 
 `README.linux` in the folder lists the glibc and libstdc++ versions and the shared libraries the
 programs need, as read from them when they were built. The Linux build has no psximager (the Docker image has);
 make comes from the system.
+
+To try a change that isn't released yet, every push to `main` also builds this, as the artifact
+`toolchaincdi-<commit>-linux64` of the "Build the Linux toolchain" run in the Actions tab, holding
+`toolchaincdi-<commit>-linux64.tar.gz` (downloading it needs a GitHub login; artifacts expire
+after 90 days). The archives are made with [`build-linux64.sh`](build-linux64.sh), in an Ubuntu
+22.04 container.
 
 ## Building from source
 
